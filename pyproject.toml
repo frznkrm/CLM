@@ -1,0 +1,37 @@
+# File: pyproject.toml
+[tool.poetry]
+name = "clm-smart-search"
+version = "0.1.0"
+description = "Contract Lifecycle Management system with smart search capabilities"
+authors = ["Farzan Karami <your.email@example.com>"]
+packages = [
+    { include = "clm_system" }
+]
+[tool.poetry.dependencies]
+python = ">=3.9,<3.12"
+aiohttp = "^3.8.4"
+fastapi = "^0.95.0"
+uvicorn = "^0.22.0"
+pymongo = "^4.3.3"
+elasticsearch = "^8.7.0"
+qdrant-client = "^1.1.6"
+sentence-transformers = "^2.2.2"
+pydantic = "^1.10.7"
+python-dotenv = "^1.0.0"
+httpx = "^0.24.0"
+pandas = "^2.0.0"
+numpy = "^1.24.3"
+torch = "^2.1.0"
+transformers = "^4.36.0"
+accelerate = "^0.26.0"  # Add this line
+
+[tool.poetry.dev-dependencies]
+pytest = "^7.3.1"
+black = "^23.3.0"
+isort = "^5.12.0"
+mypy = "^1.2.0"
+pytest-asyncio = "^0.21.0"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"

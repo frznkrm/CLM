@@ -1,0 +1,54 @@
+# ─── Python artifacts ─────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Poetry
+# (you want poetry.lock in source control, so don’t ignore it)
+# .venv/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Logs and databases
+*.log
+*.sqlite3
+*.db
+
+# dotenv
+.env
+.env.*.local
+
+# ─── Docker-related ──────────────────────────────────────────────────────────
+# don’t ignore your Dockerfile or docker-compose.yml,
+# but ignore local override files & data directories
+docker-compose.override.yml
+docker-compose.*.yml    # if you have dev/prod variants
+docker/                 # if you’ve got a docker/ folder for scripts
+docker-data/            # local volume mount, if any
+# If you accidentally unpacked images or have large folders, add them here
+
+# ─── IDEs & OS ───────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+
+
+
+temp.py

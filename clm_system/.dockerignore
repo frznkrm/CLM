@@ -1,0 +1,6 @@
+# ignore everything except source
+*
+!clm_system/
+!pyproject.toml
+!poetry.lock
+!.env.example
