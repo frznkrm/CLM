@@ -3,17 +3,17 @@
 import logging
 from typing import Dict, List, Any, Optional
 
-from qdrant_client import QdrantClient, models  # Import directly from the external library
+from qdrant_client import QdrantClient as QdrantClientLib, models
 
 from clm_system.config import settings
 
 logger = logging.getLogger(__name__)
 
-class  CustomQdrantClient:
+class  QdrantClient:
     """Client for interacting with Qdrant vector database."""
     
     def __init__(self):
-        self.client = QdrantClient(url=settings.qdrant_uri)  # You might want to differentiate here if desired
+        self.client = QdrantClientLib(url=settings.qdrant_uri)  # You might want to differentiate here if desired
         self.collection_name = "contract_clauses"
         self.vector_size = settings.vector_dimension
     
@@ -53,31 +53,18 @@ class  CustomQdrantClient:
 
     
     async def store_embedding(
-        self,
-        contract_id: str,
-        contract_title: str,
-        clause_id: str,
-        clause_type: str,
-        content: str,
-        embedding: List[float],
-        clause_title: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None
-    ) -> str:
+    self,
+    contract_id: str,
+    contract_title: str,
+    clause_id: str,
+    clause_type: str,
+    content: str,
+    embedding: List[float],
+    clause_title: Optional[str] = None,
+    metadata: Optional[Dict[str, Any]] = None
+) -> str:
         """
         Stores a clause embedding in Qdrant.
-        
-        Args:
-            contract_id: ID of the contract
-            contract_title: Title of the contract
-            clause_id: ID of the clause
-            clause_type: Type of the clause
-            content: Text content of the clause
-            embedding: Vector embedding of the clause text
-            clause_title: Optional title of the clause
-            metadata: Additional metadata
-            
-        Returns:
-            ID of the stored point
         """
         try:
             # Ensure collection exists
@@ -87,7 +74,7 @@ class  CustomQdrantClient:
             payload = {
                 "contract_id": contract_id,
                 "contract_title": contract_title,
-                "clause_id": clause_id,
+                "clause_id": clause_id,  # Keep original ID in payload
                 "clause_type": clause_type,
                 "content": content
             }
@@ -98,12 +85,22 @@ class  CustomQdrantClient:
             if metadata:
                 payload["metadata"] = metadata
             
+            # Convert clause_id to UUID format if it's not already a UUID
+            import uuid
+            point_id = clause_id
+            try:
+                # Check if it's already a UUID
+                uuid.UUID(clause_id)
+            except ValueError:
+                # If not a UUID, generate a new one based on the clause_id
+                point_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, clause_id))
+            
             # Store point
             self.client.upsert(
                 collection_name=self.collection_name,
                 points=[
                     models.PointStruct(
-                        id=clause_id,
+                        id=point_id,  # Use the UUID
                         vector=embedding,
                         payload=payload
                     )

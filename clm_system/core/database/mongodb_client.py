@@ -29,12 +29,19 @@ class MongoDBClient:
             ID of the inserted contract
         """
         try:
+            # Convert datetime to string for MongoDB
+            contract = contract.copy()
+            if "created_at" in contract:
+                contract["created_at"] = contract["created_at"].isoformat()
+            if "updated_at" in contract:
+                contract["updated_at"] = contract["updated_at"].isoformat()
+                
             result = self.contracts_collection.insert_one(contract)
             return str(result.inserted_id)
         except PyMongoError as e:
             logger.error(f"MongoDB insert error: {str(e)}")
             raise
-    
+        
     async def get_contract(self, contract_id: str) -> Optional[Dict[str, Any]]:
         """
         Retrieves a contract by ID.
