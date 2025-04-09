@@ -1,3 +1,5 @@
+from typing import List, Dict 
+
 def reciprocal_rank_fusion(
     results_a: List[Dict],
     results_b: List[Dict],

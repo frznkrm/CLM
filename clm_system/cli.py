@@ -15,9 +15,9 @@ from pydantic import ValidationError
 
 from clm_system.schemas.schemas import ContractCreate
 from clm_system.core.pipeline.orchestrator import PipelineService
-from clm_system.core.queryEngine.search import QueryRouter
+from clm_system.core.query_engine.search import QueryRouter
 from clm_system.core.utils.embeddings import get_embedding_model, compute_embedding
-
+from clm_system.core.pipeline.preprocessing.pdf_processor import PDFProcessor
 # Load environment variables
 load_dotenv()
 
@@ -130,6 +130,55 @@ def test_embedding(model_name=None):
         click.echo(f"First 5 values: {embedding[:5]}")
     except Exception as e:
         click.echo(f"Error testing embedding model: {e}", err=True)
+
+
+@cli.command()
+@click.argument('pdf_path', type=click.Path(exists=True))
+@click.option('--title', '-t', help='Optional title override')
+@click.option('--contract-type', '-c', help='Optional contract type')
+@click.option('--tags', help='Optional comma-separated tags')
+@async_command
+async def ingest_pdf(pdf_path, title=None, contract_type=None, tags=None):
+    """Ingest a contract from a PDF file."""
+    try:
+        if not pdf_path.lower().endswith('.pdf'):
+            click.echo("File must be a PDF", err=True)
+            return
+            
+        # Initialize PDF processor
+        pdf_processor = PDFProcessor()
+        
+        # Process PDF
+        click.echo(f"Processing PDF: {pdf_path}")
+        contract_data = await pdf_processor.process_pdf(pdf_path)
+        
+        # Override with provided options if any
+        if title:
+            contract_data["title"] = title
+        if contract_type:
+            contract_data["metadata"]["contract_type"] = contract_type
+        if tags:
+            contract_data["metadata"]["tags"] = [tag.strip() for tag in tags.split(',')]
+        
+        # Validate contract structure
+        try:
+            contract_obj = ContractCreate.parse_obj(contract_data)
+        except ValidationError as ve:
+            click.echo("Invalid contract structure:", err=True)
+            click.echo(ve.json(), err=True)
+            return
+        
+        # Process through pipeline
+        result = await pipeline.process_contract(contract_obj.dict())
+        
+        # Success output
+        click.echo(f"PDF contract ingested successfully: {result['id']}")
+        click.echo(f"Title: {result['title']}")
+        click.echo(f"Clauses: {result['clauses_count']}")
+        click.echo(f"Status: {result['status']}")
+        
+    except Exception as e:
+        click.echo(f"Error processing PDF contract: {e}", err=True)
 
 if __name__ == "__main__":
     cli()

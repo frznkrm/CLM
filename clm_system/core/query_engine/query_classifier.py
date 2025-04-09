@@ -9,7 +9,11 @@ logger = logging.getLogger(__name__)
 
 class QueryClassifier:
     def __init__(self):
-        self.client = AsyncOpenAI(api_key=settings.openai_api_key)
+        #self.client = AsyncOpenAI(api_key=settings.openai_api_key)
+        self.client = AsyncOpenAI(
+            base_url="http://localhost:1234/v1",  # Default LM Studio port
+            api_key="deepseek-r1-distill-qwen-7b"  # Dummy key required by client
+        )
         self.cache = {}  # Simple cache for demo purposes
         self.cache_ttl = 3600  # 1 hour TTL
         self.cache_timestamps = {}
@@ -30,7 +34,8 @@ class QueryClassifier:
         for attempt in range(max_retries):
             try:
                 response = await self.client.chat.completions.create(
-                    model="gpt-3.5-turbo",
+                    #model="gpt-3.5-turbo",
+                    model="local-model",
                     messages=[{
                         "role": "system",
                         "content": """Classify legal contract search queries. Respond with ONE word:

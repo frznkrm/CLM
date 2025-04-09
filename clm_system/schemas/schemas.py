@@ -2,7 +2,7 @@
 from pydantic import BaseModel, Field
 from typing import Dict, List, Optional, Any, Union
 from datetime import datetime
-
+from pydantic import validator
 
 class ClauseBase(BaseModel):
     """Base schema for contract clauses."""
@@ -15,15 +15,21 @@ class ClauseBase(BaseModel):
 
 
 class ContractMetadata(BaseModel):
-    """Metadata for contracts."""
     contract_type: str
     effective_date: Optional[datetime] = None
     expiration_date: Optional[datetime] = None
     parties: List[Dict[str, str]] = Field(default_factory=list)
     status: Optional[str] = None
-    tags: Optional[List[str]] = Field(default_factory=list)
-    additional_metadata: Optional[Dict[str, Any]] = Field(default_factory=dict)
+    tags: List[str] = Field(default_factory=list)
 
+    @validator('effective_date', 'expiration_date', pre=True)
+    def parse_dates(cls, value):
+        if isinstance(value, str):
+            try:
+                return parser.parse(value)
+            except:
+                return None
+        return value
 
 class ContractCreate(BaseModel):
     """Schema for creating a new contract."""

@@ -1,51 +1,184 @@
 
 === File: ./api/routes.py ===
-# File: clm_system/api/routes.py
-from fastapi import APIRouter, Depends, HTTPException
-from typing import Optional
+# clm_system/api/routes.py
+import logging
+import os
+import tempfile
+from typing import Dict, Any, List, Optional
 
-from clm_system.schemas.schemas import (
-    ContractCreate,
-    ContractResponse,
-    QueryRequest,
-    QueryResponse
-)
-from clm_system.core.pipeline.pipeline import ContractPipeline  # ✅ New pipeline
+from fastapi import APIRouter, File, UploadFile, Form, HTTPException, Query
+from fastapi.responses import JSONResponse
+from pydantic import ValidationError
+
+from clm_system.core.pipeline.orchestrator import PipelineService
 from clm_system.core.queryEngine.search import QueryRouter
+from clm_system.core.preprocessing.pdf_processor import PDFProcessor
+from clm_system.schemas.schemas import ContractCreate
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
-# Instantiate pipeline once
-pipeline = ContractPipeline()
+# Initialize services
+pipeline = PipelineService()
+query_router = QueryRouter()
+pdf_processor = PDFProcessor()
 
-@router.post("/contracts", response_model=ContractResponse, status_code=201)
-async def create_contract(
-    contract: ContractCreate,
-    pipeline: ContractPipeline = Depends(lambda: pipeline)
-):
+@router.post("/contracts/ingest", response_model=Dict[str, Any])
+async def ingest_contract(contract: ContractCreate):
     """
-    Ingest a new contract into the system.
+    Ingest a contract in JSON format.
+    
+    Args:
+        contract: Contract data in JSON format
+    
+    Returns:
+        Processed contract information
     """
     try:
-        result = await pipeline.process_contract(contract.dict())  # ✅ use new pipeline method
+        result = await pipeline.process_contract(contract.dict())
         return result
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Contract ingestion failed: {str(e)}")
+        logger.error(f"Error ingesting contract: {e}")
+        raise HTTPException(status_code=500, detail=f"Error ingesting contract: {str(e)}")
 
-@router.post("/search", response_model=QueryResponse)
+@router.post("/contracts/ingest-pdf", response_model=Dict[str, Any])
+async def ingest_pdf_contract(
+    file: UploadFile = File(...),
+    title: Optional[str] = Form(None),
+    contract_type: Optional[str] = Form(None),
+    tags: Optional[str] = Form(None)
+):
+    """
+    Ingest a contract from a PDF file.
+    
+    Args:
+        file: PDF file
+        title: Optional title override
+        contract_type: Optional contract type
+        tags: Optional comma-separated tags
+    
+    Returns:
+        Processed contract information
+    """
+    if not file.filename.lower().endswith('.pdf'):
+        raise HTTPException(status_code=400, detail="File must be a PDF")
+    
+    # Save uploaded file temporarily
+    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf')
+    try:
+        # Write file content
+        content = await file.read()
+        temp_file.write(content)
+        temp_file.close()
+        
+        # Process PDF
+        contract_data = await pdf_processor.process_pdf(temp_file.name)
+        
+        # Override with provided form data if any
+        if title:
+            contract_data["title"] = title
+        if contract_type:
+            contract_data["metadata"]["contract_type"] = contract_type
+        if tags:
+            contract_data["metadata"]["tags"] = [tag.strip() for tag in tags.split(',')]
+        
+        # Validate contract structure
+        try:
+            contract_obj = ContractCreate.parse_obj(contract_data)
+        except ValidationError as ve:
+            logger.error(f"Invalid contract structure: {ve}")
+            raise HTTPException(status_code=400, detail=f"Invalid contract structure: {ve}")
+        
+        # Process through pipeline
+        result = await pipeline.process_contract(contract_obj.dict())
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error processing PDF contract: {e}")
+        raise HTTPException(status_code=500, detail=f"Error processing PDF: {str(e)}")
+    finally:
+        # Clean up temporary file
+        if os.path.exists(temp_file.name):
+            os.unlink(temp_file.name)
+
+@router.get("/contracts/{contract_id}", response_model=Dict[str, Any])
+async def get_contract(contract_id: str):
+    """
+    Get contract by ID.
+    
+    Args:
+        contract_id: Contract ID
+    
+    Returns:
+        Contract data
+    """
+    try:
+        # Assuming pipeline or a repository has this method
+        contract = await pipeline.get_contract(contract_id)
+        if not contract:
+            raise HTTPException(status_code=404, detail="Contract not found")
+        return contract
+    except Exception as e:
+        logger.error(f"Error getting contract: {e}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving contract: {str(e)}")
+
+@router.get("/contracts", response_model=List[Dict[str, Any]])
+async def list_contracts(
+    limit: int = Query(100, ge=1, le=1000),
+    skip: int = Query(0, ge=0),
+    contract_type: Optional[str] = None,
+    status: Optional[str] = None
+):
+    """
+    List contracts with optional filtering.
+    
+    Args:
+        limit: Maximum number of contracts to return
+        skip: Number of contracts to skip
+        contract_type: Filter by contract type
+        status: Filter by status
+    
+    Returns:
+        List of contracts
+    """
+    try:
+        # Build filters
+        filters = {}
+        if contract_type:
+            filters["metadata.contract_type"] = contract_type
+        if status:
+            filters["metadata.status"] = status
+            
+        # Assuming pipeline or a repository has this method
+        contracts = await pipeline.get_contracts(filters, limit, skip)
+        return contracts
+    except Exception as e:
+        logger.error(f"Error listing contracts: {e}")
+        raise HTTPException(status_code=500, detail=f"Error listing contracts: {str(e)}")
+
+@router.post("/search", response_model=Dict[str, Any])
 async def search_contracts(
-    request: QueryRequest,
-    query_router: QueryRouter = Depends(lambda: QueryRouter())
+    query: str,
+    filters: Optional[Dict[str, Any]] = None,
+    top_k: int = Query(5, ge=1, le=100)
 ):
     """
-    Search for contracts using structured and/or semantic search.
+    Search contracts using the query router.
+    
+    Args:
+        query: Search query
+        filters: Optional filters
+        top_k: Number of results to return
+    
+    Returns:
+        Search results
     """
     try:
-        result = await query_router.route_query(request.query, request.filters)
-        return result
+        results = await query_router.route_query(query, filters, top_k)
+        return results
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
-
+        logger.error(f"Error performing search: {e}")
+        raise HTTPException(status_code=500, detail=f"Error performing search: {str(e)}")
 
 === End of ./api/routes.py ===
 
@@ -189,6 +322,55 @@ def test_embedding(model_name=None):
         click.echo(f"First 5 values: {embedding[:5]}")
     except Exception as e:
         click.echo(f"Error testing embedding model: {e}", err=True)
+
+
+@cli.command()
+@click.argument('pdf_path', type=click.Path(exists=True))
+@click.option('--title', '-t', help='Optional title override')
+@click.option('--contract-type', '-c', help='Optional contract type')
+@click.option('--tags', help='Optional comma-separated tags')
+@async_command
+async def ingest_pdf(pdf_path, title=None, contract_type=None, tags=None):
+    """Ingest a contract from a PDF file."""
+    try:
+        if not pdf_path.lower().endswith('.pdf'):
+            click.echo("File must be a PDF", err=True)
+            return
+            
+        # Initialize PDF processor
+        pdf_processor = PDFProcessor()
+        
+        # Process PDF
+        click.echo(f"Processing PDF: {pdf_path}")
+        contract_data = await pdf_processor.process_pdf(pdf_path)
+        
+        # Override with provided options if any
+        if title:
+            contract_data["title"] = title
+        if contract_type:
+            contract_data["metadata"]["contract_type"] = contract_type
+        if tags:
+            contract_data["metadata"]["tags"] = [tag.strip() for tag in tags.split(',')]
+        
+        # Validate contract structure
+        try:
+            contract_obj = ContractCreate.parse_obj(contract_data)
+        except ValidationError as ve:
+            click.echo("Invalid contract structure:", err=True)
+            click.echo(ve.json(), err=True)
+            return
+        
+        # Process through pipeline
+        result = await pipeline.process_contract(contract_obj.dict())
+        
+        # Success output
+        click.echo(f"PDF contract ingested successfully: {result['id']}")
+        click.echo(f"Title: {result['title']}")
+        click.echo(f"Clauses: {result['clauses_count']}")
+        click.echo(f"Status: {result['status']}")
+        
+    except Exception as e:
+        click.echo(f"Error processing PDF contract: {e}", err=True)
 
 if __name__ == "__main__":
     cli()
@@ -968,6 +1150,212 @@ class PipelineService:
 
 
 === End of ./core/pipeline/orchestrator.py ===
+
+
+=== File: ./core/pipeline/preprocessing/pdf_processor.py ===
+# clm_system/core/preprocessing/pdf_processor.py
+import fitz  # PyMuPDF
+import re
+import logging
+from typing import Dict, Any, List
+
+logger = logging.getLogger(__name__)
+
+class PDFProcessor:
+    """Processes PDF files into contract JSON structure."""
+    
+    def __init__(self):
+        # Initialize any needed resources
+        pass
+        
+    async def process_pdf(self, file_path: str) -> Dict[str, Any]:
+        """
+        Process a PDF file into a contract structure.
+        
+        Args:
+            file_path: Path to the PDF file
+            
+        Returns:
+            Contract object in dictionary form
+        """
+        try:
+            # Extract text from PDF
+            text = await self._extract_text(file_path)
+            
+            # Process the text into contract structure
+            contract = await self._structure_contract(text, file_path)
+            
+            return contract
+        except Exception as e:
+            logger.error(f"Error processing PDF {file_path}: {e}")
+            raise
+    
+    async def _extract_text(self, file_path: str) -> str:
+        """Extract text from PDF."""
+        text = ""
+        try:
+            doc = fitz.open(file_path)
+            for page in doc:
+                text += page.get_text()
+            return text
+        except Exception as e:
+            logger.error(f"Error extracting text from PDF: {e}")
+            raise
+    
+    async def _structure_contract(self, text: str, file_name: str) -> Dict[str, Any]:
+        """
+        Convert raw text into contract structure.
+        Uses heuristics and patterns to identify contract components.
+        """
+        # Basic structure
+        contract = {
+            "title": self._extract_title(text, file_name),
+            "metadata": self._extract_metadata(text),
+            "clauses": self._extract_clauses(text)
+        }
+        
+        return contract
+    
+    def _extract_title(self, text: str, file_name: str) -> str:
+        """Extract contract title from text or use filename."""
+        # Look for title patterns (often in first few lines)
+        first_lines = text.strip().split('\n')[:5]
+        for line in first_lines:
+            if re.search(r'agreement|contract|terms', line.lower()):
+                return line.strip()
+        
+        # Fallback to filename
+        base_name = os.path.basename(file_name)
+        name_without_ext = os.path.splitext(base_name)[0]
+        return name_without_ext.replace('_', ' ').title()
+    
+    def _extract_metadata(self, text: str) -> Dict[str, Any]:
+        """Extract contract metadata."""
+        metadata = {
+            "contract_type": self._identify_contract_type(text),
+            "parties": self._identify_parties(text),
+            "status": "draft",  # Default status
+            "tags": []  # Can be filled based on content analysis
+        }
+        
+        # Extract dates
+        dates = self._extract_dates(text)
+        if dates.get("effective_date"):
+            metadata["effective_date"] = dates["effective_date"]
+        if dates.get("expiration_date"):
+            metadata["expiration_date"] = dates["expiration_date"]
+            
+        return metadata
+    
+    def _identify_contract_type(self, text: str) -> str:
+        """Identify contract type from text."""
+        type_patterns = {
+            "license": r'license|licensing|licensor|licensee',
+            "service": r'service|services|provider|customer',
+            "nda": r'confidential|non-disclosure|nda',
+            "employment": r'employment|employer|employee|hire',
+            "purchase": r'purchase|procurement|buyer|seller'
+        }
+        
+        for contract_type, pattern in type_patterns.items():
+            if re.search(pattern, text.lower()):
+                return contract_type
+                
+        return "other"
+    
+    def _identify_parties(self, text: str) -> List[Dict[str, str]]:
+        """Extract party information."""
+        parties = []
+        
+        # Look for common party patterns
+        party_patterns = [
+            r'between\s+([^,]+),?\s+(?:a|an)\s+([^,]+)',
+            r'(?:party|client|customer|vendor|supplier):\s*([^\n]+)',
+            r'(?:hereinafter\s+referred\s+to\s+as\s+["\'])([^"\']+)'
+        ]
+        
+        for pattern in party_patterns:
+            matches = re.finditer(pattern, text, re.IGNORECASE)
+            for i, match in enumerate(matches):
+                party_name = match.group(1).strip()
+                if party_name and len(party_name) < 100:  # Sanity check
+                    parties.append({
+                        "name": party_name,
+                        "id": f"party-{len(parties)+1:03d}"
+                    })
+        
+        return parties
+    
+    def _extract_dates(self, text: str) -> Dict[str, str]:
+        """Extract key dates from contract."""
+        dates = {}
+        
+        # Date patterns (simplified - would need more robust implementation)
+        effective_date_pattern = r'effective\s+date.*?(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}|\w+\s+\d{1,2},?\s+\d{4})'
+        expiration_date_pattern = r'(?:expiration|termination|end)\s+date.*?(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}|\w+\s+\d{1,2},?\s+\d{4})'
+        
+        effective_match = re.search(effective_date_pattern, text, re.IGNORECASE)
+        if effective_match:
+            # Would need date parsing/normalization in production
+            dates["effective_date"] = effective_match.group(1)
+            
+        expiration_match = re.search(expiration_date_pattern, text, re.IGNORECASE)
+        if expiration_match:
+            dates["expiration_date"] = expiration_match.group(1)
+            
+        return dates
+    
+    def _extract_clauses(self, text: str) -> List[Dict[str, Any]]:
+        """Extract clauses from contract text."""
+        clauses = []
+        
+        # Split text into possible clauses (simplified)
+        # In production, would need more sophisticated section detection
+        section_pattern = r'(?:\n|\r\n)(\d+\.?\s+[A-Z][^\.]+)\.?(?:\n|\r\n)'
+        sections = re.split(section_pattern, text)
+        
+        position = 1
+        for i in range(1, len(sections), 2):
+            if i < len(sections):
+                title = sections[i].strip()
+                content = sections[i+1].strip() if i+1 < len(sections) else ""
+                
+                if title and content:
+                    clause_type = self._identify_clause_type(title, content)
+                    clauses.append({
+                        "id": f"clause-{position:03d}",
+                        "title": title,
+                        "type": clause_type,
+                        "text": content,
+                        "position": position
+                    })
+                    position += 1
+        
+        return clauses
+    
+    def _identify_clause_type(self, title: str, content: str) -> str:
+        """Identify clause type from title and content."""
+        # Simple mapping of common clause types
+        type_patterns = {
+            "term": r'term|duration|period',
+            "payment": r'payment|fee|compensation|price',
+            "termination": r'terminat|cancel|end',
+            "confidentiality": r'confidential|secret|disclosure',
+            "liability": r'liab|indemnif|harmless',
+            "warranty": r'warrant|guarantee',
+            "grant": r'grant|licens|right',
+            "governing_law": r'governing law|jurisdiction|venue'
+        }
+        
+        combined_text = (title + " " + content[:200]).lower()
+        
+        for clause_type, pattern in type_patterns.items():
+            if re.search(pattern, combined_text):
+                return clause_type
+                
+        return "other"
+
+=== End of ./core/pipeline/preprocessing/pdf_processor.py ===
 
 
 === File: ./core/query_engine/helpers.py ===
