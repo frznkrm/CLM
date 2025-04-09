@@ -38,7 +38,6 @@ clm_system/
 │   │   │   ├── base.py
 │   │   │   └── contract.py
 │   │   ├── orchestrator.py
-│   │   └── pipeline.py    # Missing in the files but referenced
 │   ├── query_engine/       # Search functionality
 │   │   ├── helpers.py
 │   │   ├── query_classifier.py
