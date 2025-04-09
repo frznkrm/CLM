@@ -13,9 +13,9 @@ import click
 from dotenv import load_dotenv
 from pydantic import ValidationError
 
-from clm_system.api.schemas import ContractCreate
+from clm_system.schemas.schemas import ContractCreate
 from clm_system.core.pipeline.orchestrator import PipelineService
-from clm_system.core.search import QueryRouter
+from clm_system.core.queryEngine.search import QueryRouter
 from clm_system.core.utils.embeddings import get_embedding_model, compute_embedding
 
 # Load environment variables

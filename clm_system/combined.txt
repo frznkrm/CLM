@@ -1,0 +1,1690 @@
+
+=== File: ./api/routes.py ===
+# File: clm_system/api/routes.py
+from fastapi import APIRouter, Depends, HTTPException
+from typing import Optional
+
+from clm_system.schemas.schemas import (
+    ContractCreate,
+    ContractResponse,
+    QueryRequest,
+    QueryResponse
+)
+from clm_system.core.pipeline.pipeline import ContractPipeline  # ✅ New pipeline
+from clm_system.core.queryEngine.search import QueryRouter
+
+router = APIRouter()
+
+# Instantiate pipeline once
+pipeline = ContractPipeline()
+
+@router.post("/contracts", response_model=ContractResponse, status_code=201)
+async def create_contract(
+    contract: ContractCreate,
+    pipeline: ContractPipeline = Depends(lambda: pipeline)
+):
+    """
+    Ingest a new contract into the system.
+    """
+    try:
+        result = await pipeline.process_contract(contract.dict())  # ✅ use new pipeline method
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Contract ingestion failed: {str(e)}")
+
+@router.post("/search", response_model=QueryResponse)
+async def search_contracts(
+    request: QueryRequest,
+    query_router: QueryRouter = Depends(lambda: QueryRouter())
+):
+    """
+    Search for contracts using structured and/or semantic search.
+    """
+    try:
+        result = await query_router.route_query(request.query, request.filters)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
+
+
+=== End of ./api/routes.py ===
+
+
+=== File: ./api/__init__.py ===
+
+
+=== End of ./api/__init__.py ===
+
+
+=== File: ./cli.py ===
+#!/usr/bin/env python
+"""
+Command-line interface for CLM Smart Search System.
+Allows users to ingest contracts, search, and manage the system.
+"""
+import asyncio
+import json
+import logging
+import os
+import functools
+
+import click
+from dotenv import load_dotenv
+from pydantic import ValidationError
+
+from clm_system.schemas.schemas import ContractCreate
+from clm_system.core.pipeline.orchestrator import PipelineService
+from clm_system.core.queryEngine.search import QueryRouter
+from clm_system.core.utils.embeddings import get_embedding_model, compute_embedding
+
+# Load environment variables
+load_dotenv()
+
+# Configure logging
+logging.basicConfig(
+    level=getattr(logging, os.getenv("LOG_LEVEL", "INFO")),
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+)
+logger = logging.getLogger("clm-cli")
+
+# Initialize services
+pipeline = PipelineService()      # no args, uses its internal defaults
+query_router = QueryRouter()
+
+def async_command(func):
+    """Decorator to run async commands."""
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        return asyncio.run(func(*args, **kwargs))
+    return wrapper
+
+@click.group()
+def cli():
+    """CLM Smart Search System CLI"""
+    pass
+
+@cli.command()
+@click.argument('file_path', type=click.Path(exists=True))
+@async_command
+async def ingest(file_path):
+    """Ingest a contract JSON file into the system."""
+    # 1) Load raw JSON
+    try:
+        raw = json.load(open(file_path, 'r'))
+    except Exception as e:
+        click.echo(f"Failed to read file {file_path}: {e}", err=True)
+        return
+
+    # 2) Validate & coerce with Pydantic
+    try:
+        contract_obj = ContractCreate.parse_obj(raw)
+    except ValidationError as ve:
+        click.echo("Invalid contract JSON:", err=True)
+        click.echo(ve.json(), err=True)
+        return
+
+    # 3) Run through your pipeline
+    try:
+        result = await pipeline.process_contract(contract_obj.dict())
+    except Exception as e:
+        click.echo(f"Error ingesting contract: {e}", err=True)
+        return
+
+    # 4) Success output
+    click.echo(f"Contract ingested successfully: {result['id']}")
+    click.echo(f"Title: {result['title']}")
+    click.echo(f"Clauses: {result['clauses_count']}")
+    click.echo(f"Status: {result['status']}")
+
+@cli.command()
+@click.argument('query')
+@click.option('--filters', '-f', help='JSON string with filters')
+@click.option('--top-k', '-k', type=int, default=5, help='Number of results to return')
+@async_command
+async def search(query, filters=None, top_k=5):
+    """Search for contracts using the query router."""
+    # Parse filters JSON if provided
+    try:
+        filter_dict = json.loads(filters) if filters else None
+    except Exception as e:
+        click.echo(f"Invalid filters JSON: {e}", err=True)
+        return
+
+    # Perform search
+    try:
+        results = await query_router.route_query(query, filter_dict, top_k)
+    except Exception as e:
+        click.echo(f"Error performing search: {e}", err=True)
+        return
+
+    # Display results
+    click.echo(f"Query: {results['query']}")
+    click.echo(f"Query type: {results['metadata']['query_type']}")
+    click.echo(f"Total results: {results['total_results']}")
+    click.echo(f"Execution time: {results['execution_time_ms']:.2f}ms")
+    click.echo("\nResults:")
+    for i, r in enumerate(results['results'], 1):
+        click.echo(f"\n--- Result {i} ---")
+        click.echo(f"Contract: {r['contract_title']} (ID: {r['contract_id']})")
+        click.echo(f"Clause: {r.get('clause_title', r['clause_type'])}")
+        click.echo(f"Relevance: {r['relevance_score']:.4f}")
+        click.echo(f"Content: {r['content'][:100]}...")
+
+@cli.command()
+@click.option('--model-name', '-m', help='Override the default embedding model')
+def test_embedding(model_name=None):
+    """Test the embedding model with a sample text."""
+    try:
+        if model_name:
+            os.environ["EMBEDDING_MODEL"] = model_name
+            click.echo(f"Using model: {model_name}")
+        else:
+            click.echo(f"Using default model: {os.getenv('EMBEDDING_MODEL')}")
+
+        model = get_embedding_model()
+        sample_text = "This is a test sentence to verify the embedding model is working correctly."
+        embedding = compute_embedding(sample_text, model)
+
+        click.echo(f"Successfully computed embedding with dimensions: {len(embedding)}")
+        click.echo(f"First 5 values: {embedding[:5]}")
+    except Exception as e:
+        click.echo(f"Error testing embedding model: {e}", err=True)
+
+if __name__ == "__main__":
+    cli()
+
+
+=== End of ./cli.py ===
+
+
+=== File: ./config.py ===
+# File: clm_system/config.py
+import os
+from functools import lru_cache
+from typing import Optional
+
+from pydantic import BaseSettings, Field
+from dotenv import load_dotenv
+load_dotenv()
+
+class Settings(BaseSettings):
+    
+    openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
+    embedding_model: str = os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")
+    chunk_size: int = int(os.getenv("CHUNK_SIZE", "512"))
+    chunk_overlap: int = int(os.getenv("CHUNK_OVERLAP", "128"))
+    default_top_k: int = int(os.getenv("DEFAULT_TOP_K", "5"))
+    classifier_cache_ttl: int = int(os.getenv("CLASSIFIER_CACHE_TTL", "3600"))
+    
+    # MongoDB settings
+    mongodb_uri: str = Field(..., env="MONGODB_URI")
+    mongodb_database: str = Field("clm_db", env="MONGODB_DATABASE")
+    
+    # Elasticsearch settings
+    elasticsearch_uri: str = Field(..., env="ELASTICSEARCH_URI")
+    
+    # Qdrant settings
+    qdrant_uri: str = Field(..., env="QDRANT_URI")
+    
+    # API settings
+    api_host: str = Field("0.0.0.0", env="API_HOST")
+    api_port: int = Field(8000, env="API_PORT")
+    
+    # Embedding model
+    embedding_model: str = Field(
+        "sentence-transformers/all-MiniLM-L6-v2", env="EMBEDDING_MODEL"
+    )
+    
+    # Default chunk size for text splitting
+    chunk_size: int = Field(500, env="CHUNK_SIZE")
+    chunk_overlap: int = Field(50, env="CHUNK_OVERLAP")
+    
+    # Vector settings
+    vector_dimension: int = Field(384, env="VECTOR_DIMENSION")  # Default for MiniLM-L6
+    
+    # Search settings
+    default_top_k: int = Field(5, env="DEFAULT_TOP_K")
+    
+    class Config:
+        env_file = ".env"
+        case_sensitive = False
+    
+
+@lru_cache()
+def get_settings() -> Settings:
+    return Settings()
+
+
+settings = get_settings()
+
+
+
+=== End of ./config.py ===
+
+
+=== File: ./core/database/elasticsearch_client.py ===
+
+# File: clm_system/core/database/elasticsearch_client.py
+import logging
+from typing import Dict, List, Any, Optional
+
+from elasticsearch import AsyncElasticsearch, NotFoundError
+
+from clm_system.config import settings
+
+logger = logging.getLogger(__name__)
+
+class ElasticsearchClient:
+    """Client for interacting with Elasticsearch."""
+    
+    def __init__(self):
+        self.client = AsyncElasticsearch(settings.elasticsearch_uri)
+        self.index_name = "contracts"
+    
+    async def ensure_index(self):
+        """Ensures the contracts index exists with proper mappings."""
+        try:
+            # Check if index exists
+            exists = await self.client.indices.exists(index=self.index_name)
+            if not exists:
+                # Create index with mappings
+                mappings = {
+                    "mappings": {
+                        "properties": {
+                            "id": {"type": "keyword"},
+                            "title": {"type": "text", "analyzer": "standard"},
+                            "created_at": {"type": "date"},
+                            "updated_at": {"type": "date"},
+                            "metadata": {
+                                "properties": {
+                                    "contract_type": {"type": "keyword"},
+                                    "effective_date": {"type": "date"},
+                                    "expiration_date": {"type": "date"},
+                                    "parties": {
+                                        "type": "nested",
+                                        "properties": {
+                                            "name": {"type": "text", "analyzer": "standard"},
+                                            "id": {"type": "keyword"}
+                                        }
+                                    },
+                                    "status": {"type": "keyword"},
+                                    "tags": {"type": "keyword"}
+                                }
+                            },
+                            "clauses": {
+                                "type": "nested",
+                                "properties": {
+                                    "id": {"type": "keyword"},
+                                    "title": {"type": "text", "analyzer": "standard"},
+                                    "type": {"type": "keyword"},
+                                    "text": {"type": "text", "analyzer": "standard"},
+                                    "position": {"type": "integer"},
+                                    "metadata": {"type": "object"}
+                                }
+                            }
+                        }
+                    }
+                }
+                await self.client.indices.create(index=self.index_name, body=mappings)
+                logger.info(f"Created Elasticsearch index {self.index_name}")
+        except Exception as e:
+            logger.error(f"Error ensuring Elasticsearch index: {str(e)}")
+            raise
+    
+    async def index_contract(self, contract: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Indexes a contract in Elasticsearch.
+        
+        Args:
+            contract: Contract data
+            
+        Returns:
+            Elasticsearch response
+        """
+        try:
+            # Ensure index exists
+            await self.ensure_index()
+            
+            # Index document
+            response = await self.client.index(
+                index=self.index_name,
+                id=contract["id"],
+                document=contract,
+                refresh=True  # Make document immediately searchable
+            )
+            return response
+        except Exception as e:
+            logger.error(f"Elasticsearch index error: {str(e)}")
+            raise
+    
+    async def search(
+        self, query: str, filters: Optional[Dict[str, Any]] = None, top_k: int = 5
+    ) -> List[Dict[str, Any]]:
+        """
+        Searches for contracts in Elasticsearch.
+        
+        Args:
+            query: Search query
+            filters: Query filters
+            top_k: Maximum number of results to return
+            
+        Returns:
+            List of search results
+        """
+        try:
+            await self.ensure_index()
+            
+            search_query = {
+                "query": {
+                    "bool": {
+                        "must": [
+                            {
+                                "nested": {
+                                    "path": "clauses",
+                                    "query": {
+                                        "multi_match": {
+                                            "query": query,
+                                            "fields": ["clauses.title^1.5", "clauses.text"]
+                                        }
+                                    },
+                                    "inner_hits": {
+                                        "highlight": {
+                                            "fields": {
+                                                "clauses.text": {"fragment_size": 150}
+                                            }
+                                        },
+                                        "_source": True,
+                                        "size": 3  # Maximum number of clause matches per contract
+                                    }
+                                }
+                            },
+                            {
+                                "multi_match": {
+                                    "query": query,
+                                    "fields": ["title^2"]
+                                }
+                            }
+                        ]
+                    }
+                },
+                "size": top_k
+            }
+
+            # Add filters if provided
+            if filters:
+                filter_clauses = []
+                for field, value in filters.items():
+                    if field.startswith("metadata."):
+                        filter_clauses.append({"term": {field: value}})
+                    elif field.startswith("clauses."):
+                        filter_clauses.append({
+                            "nested": {
+                                "path": "clauses",
+                                "query": {"term": {field: value}}
+                            }
+                        })
+                    else:
+                        filter_clauses.append({"term": {field: value}})
+                
+                if filter_clauses:
+                    search_query["query"]["bool"]["filter"] = filter_clauses
+
+            response = await self.client.search(
+                index=self.index_name,
+                body=search_query
+            )
+
+            results = []
+            for hit in response["hits"]["hits"]:
+                source = hit["_source"]
+                inner_hits = hit.get("inner_hits", {}).get("clauses", {}).get("hits", {}).get("hits", [])
+                
+                for clause_hit in inner_hits:
+                    clause_source = clause_hit["_source"]
+                    highlights = clause_hit.get("highlight", {}).get("clauses.text", [])
+                    highlight_text = highlights[0] if highlights else clause_source.get("text", "")[:150]
+                    
+                    results.append({
+                        "clause_id": clause_source["id"],
+                        "contract_id": source["id"],
+                        "contract_title": source["title"],
+                        "clause_type": clause_source["type"],
+                        "clause_title": clause_source.get("title"),
+                        "content": highlight_text,
+                        "relevance_score": hit["_score"] * clause_hit["_score"],
+                        "metadata": {
+                            **source.get("metadata", {}),
+                            **clause_source.get("metadata", {})
+                        }
+                    })
+            
+            return sorted(results, key=lambda x: -x["relevance_score"])[:top_k]
+        except Exception as e:
+            logger.error(f"Elasticsearch search error: {str(e)}")
+            raise
+ 
+
+=== End of ./core/database/elasticsearch_client.py ===
+
+
+=== File: ./core/database/mongodb_client.py ===
+
+# File: clm_system/core/database/mongodb_client.py
+import logging
+from typing import Dict, List, Any, Optional
+
+from pymongo import MongoClient
+from pymongo.errors import PyMongoError
+
+from clm_system.config import settings
+
+logger = logging.getLogger(__name__)
+
+class MongoDBClient:
+    """Client for interacting with MongoDB."""
+    
+    def __init__(self):
+        self.client = MongoClient(settings.mongodb_uri)
+        self.db = self.client[settings.mongodb_database]
+        self.contracts_collection = self.db["contracts"]
+    
+    async def insert_contract(self, contract: Dict[str, Any]) -> str:
+        """
+        Inserts a contract into the MongoDB collection.
+        
+        Args:
+            contract: Contract data
+            
+        Returns:
+            ID of the inserted contract
+        """
+        try:
+            # Convert datetime to string for MongoDB
+            contract = contract.copy()
+            if "created_at" in contract:
+                contract["created_at"] = contract["created_at"].isoformat()
+            if "updated_at" in contract:
+                contract["updated_at"] = contract["updated_at"].isoformat()
+                
+            result = self.contracts_collection.insert_one(contract)
+            return str(result.inserted_id)
+        except PyMongoError as e:
+            logger.error(f"MongoDB insert error: {str(e)}")
+            raise
+        
+    async def get_contract(self, contract_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Retrieves a contract by ID.
+        
+        Args:
+            contract_id: ID of the contract to retrieve
+            
+        Returns:
+            Contract data or None if not found
+        """
+        try:
+            contract = self.contracts_collection.find_one({"id": contract_id})
+            return contract
+        except PyMongoError as e:
+            logger.error(f"MongoDB get error: {str(e)}")
+            raise
+    
+    async def get_contracts(
+        self, filters: Optional[Dict[str, Any]] = None, limit: int = 100, skip: int = 0
+    ) -> List[Dict[str, Any]]:
+        """
+        Retrieves contracts matching the given filters.
+        
+        Args:
+            filters: Query filters
+            limit: Maximum number of contracts to return
+            skip: Number of contracts to skip
+            
+        Returns:
+            List of contracts
+        """
+        try:
+            query = filters or {}
+            contracts = list(
+                self.contracts_collection
+                .find(query)
+                .limit(limit)
+                .skip(skip)
+            )
+            return contracts
+        except PyMongoError as e:
+            logger.error(f"MongoDB get_contracts error: {str(e)}")
+            raise
+
+
+=== End of ./core/database/mongodb_client.py ===
+
+
+=== File: ./core/database/qdrant_client.py ===
+
+# File: clm_system/core/database/qdrant_client.py
+import logging
+from typing import Dict, List, Any, Optional
+
+from qdrant_client import QdrantClient as QdrantClientLib, models
+
+from clm_system.config import settings
+
+logger = logging.getLogger(__name__)
+
+class  QdrantClient:
+    """Client for interacting with Qdrant vector database."""
+    
+    def __init__(self):
+        self.client = QdrantClientLib(url=settings.qdrant_uri)  # You might want to differentiate here if desired
+        self.collection_name = "contract_clauses"
+        self.vector_size = settings.vector_dimension
+    
+    async def ensure_collection(self):
+        """Ensures the vector collection exists."""
+        try:
+            # Check if collection exists
+            collections = self.client.get_collections().collections
+            collection_names = [c.name for c in collections]
+            
+            if self.collection_name not in collection_names:
+                # Create collection
+                self.client.create_collection(
+                    collection_name=self.collection_name,
+                    vectors_config=models.VectorParams(
+                        size=self.vector_size,
+                        distance=models.Distance.COSINE
+                    )
+                )
+                
+                # Create payload indexes for fast filtering
+                self.client.create_payload_index(
+                    collection_name=self.collection_name,
+                    field_name="contract_id",
+                    field_schema=models.PayloadSchemaType.KEYWORD
+                )
+                self.client.create_payload_index(
+                    collection_name=self.collection_name,
+                    field_name="clause_type",
+                    field_schema=models.PayloadSchemaType.KEYWORD
+                )
+                
+                logger.info(f"Created Qdrant collection {self.collection_name}")
+        except Exception as e:
+            logger.error(f"Error ensuring Qdrant collection: {str(e)}")
+            raise
+
+    
+    async def store_embedding(
+    self,
+    contract_id: str,
+    contract_title: str,
+    clause_id: str,
+    clause_type: str,
+    content: str,
+    embedding: List[float],
+    clause_title: Optional[str] = None,
+    metadata: Optional[Dict[str, Any]] = None
+) -> str:
+        """
+        Stores a clause embedding in Qdrant.
+        """
+        try:
+            # Ensure collection exists
+            await self.ensure_collection()
+            
+            # Build payload
+            payload = {
+                "contract_id": contract_id,
+                "contract_title": contract_title,
+                "clause_id": clause_id,  # Keep original ID in payload
+                "clause_type": clause_type,
+                "content": content
+            }
+            
+            if clause_title:
+                payload["clause_title"] = clause_title
+                
+            if metadata:
+                payload["metadata"] = metadata
+            
+            # Convert clause_id to UUID format if it's not already a UUID
+            import uuid
+            point_id = clause_id
+            try:
+                # Check if it's already a UUID
+                uuid.UUID(clause_id)
+            except ValueError:
+                # If not a UUID, generate a new one based on the clause_id
+                point_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, clause_id))
+            
+            # Store point
+            self.client.upsert(
+                collection_name=self.collection_name,
+                points=[
+                    models.PointStruct(
+                        id=point_id,  # Use the UUID
+                        vector=embedding,
+                        payload=payload
+                    )
+                ]
+            )
+            
+            return clause_id
+        except Exception as e:
+            logger.error(f"Qdrant store error: {str(e)}")
+            raise
+    
+    async def search(
+        self, 
+        embedding: List[float],
+        filters: Optional[Dict[str, Any]] = None,
+        top_k: int = 5
+    ) -> List[Dict[str, Any]]:
+        """
+        Searches for similar clauses in Qdrant.
+        
+        Args:
+            embedding: Query vector embedding
+            filters: Optional filters
+            top_k: Maximum number of results to return
+            
+        Returns:
+            List of search results
+        """
+        try:
+            # Ensure collection exists
+            await self.ensure_collection()
+            
+            # Build filter
+            filter_query = None
+            if filters:
+                conditions = []
+                for field, value in filters.items():
+                    if field == "contract_id":
+                        conditions.append(
+                            models.FieldCondition(
+                                key="contract_id",
+                                match=models.MatchValue(value=value)
+                            )
+                        )
+                    elif field == "clause_type":
+                        conditions.append(
+                            models.FieldCondition(
+                                key="clause_type",
+                                match=models.MatchValue(value=value)
+                            )
+                        )
+                
+                if conditions:
+                    filter_query = models.Filter(
+                        must=conditions
+                    )
+            
+            # Execute search
+            search_results = self.client.search(
+                collection_name=self.collection_name,
+                query_vector=embedding,
+                query_filter=filter_query,
+                limit=top_k
+            )
+            
+            # Process results
+            results = []
+            for hit in search_results:
+                results.append({
+                    "clause_id": hit.payload["clause_id"],
+                    "contract_id": hit.payload["contract_id"],
+                    "contract_title": hit.payload["contract_title"],
+                    "clause_type": hit.payload["clause_type"],
+                    "clause_title": hit.payload.get("clause_title"),
+                    "content": hit.payload["content"],
+                    "relevance_score": hit.score,
+                    "metadata": hit.payload.get("metadata", {})
+                })
+            
+            return results
+        except Exception as e:
+            logger.error(f"Qdrant search error: {str(e)}")
+            raise
+
+
+=== End of ./core/database/qdrant_client.py ===
+
+
+=== File: ./core/database/__init__.py ===
+
+
+=== End of ./core/database/__init__.py ===
+
+
+=== File: ./core/pipeline/base.py ===
+# clm_system/core/pipeline/base.py
+from typing import Any, Dict
+
+class IngestorABC:
+    def ingest(self, raw: Any) -> Dict[str, Any]:
+        """Normalize raw input into our contract dict."""
+        raise NotImplementedError
+
+class CleanerABC:
+    def clean(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Apply PII scrubbing, standardization, etc."""
+        raise NotImplementedError
+
+class ChunkerABC:
+    def chunk(self, text: str) -> list[str]:
+        """Split long text into embedding‑ready chunks."""
+        raise NotImplementedError
+
+
+=== End of ./core/pipeline/base.py ===
+
+
+=== File: ./core/pipeline/chunking/base.py ===
+# file: core/pipeline/chunking/base.py 
+from abc import ABC, abstractmethod
+
+class ChunkerABC(ABC):
+    @abstractmethod
+    def chunk(self, raw: dict) -> dict:
+        pass
+
+
+=== End of ./core/pipeline/chunking/base.py ===
+
+
+=== File: ./core/pipeline/chunking/contract.py ===
+# clm_system/core/pipeline/chunking/contract.py
+from typing import List
+import spacy
+from .base import ChunkerABC
+from clm_system.config import settings
+
+class ContractChunker(ChunkerABC):
+    def __init__(self):
+        self.nlp = spacy.load("en_core_web_sm")
+        self.nlp.disable_pipes("parser", "ner")  # Keep only tokenizer/sentence boundary detection
+
+    def chunk(self, text: str) -> List[str]:
+        doc = self.nlp(text)
+        sentences = [sent.text.strip() for sent in doc.sents]
+        
+        size = settings.chunk_size
+        overlap = settings.chunk_overlap
+        chunks = []
+        current_chunk = []
+        current_length = 0
+
+        for sentence in sentences:
+            sentence_tokens = sentence.split()
+            sentence_len = len(sentence_tokens)
+            
+            if sentence_len > size:
+                # Handle very long sentences
+                for i in range(0, sentence_len, size - overlap):
+                    chunk_tokens = sentence_tokens[i:min(i + size, sentence_len)]
+                    chunks.append(" ".join(chunk_tokens))
+            else:
+                if current_length + sentence_len > size:
+                    # Finalize current chunk
+                    chunks.append(" ".join(current_chunk))
+                    # Start new chunk with overlap tokens from previous chunk
+                    overlap_tokens = min(overlap, len(current_chunk))
+                    current_chunk = current_chunk[-overlap_tokens:] if overlap_tokens > 0 else []
+                    current_length = len(current_chunk)
+                
+                current_chunk.extend(sentence_tokens)
+                current_length += sentence_len
+
+        if current_chunk:
+            chunks.append(" ".join(current_chunk))
+
+        return chunks
+
+=== End of ./core/pipeline/chunking/contract.py ===
+
+
+=== File: ./core/pipeline/cleaning/base.py ===
+# file: core/pipeline/cleaning/base.py 
+from abc import ABC, abstractmethod
+
+class CleanerABC(ABC):
+    @abstractmethod
+    def clean(self, raw: dict) -> dict:
+        pass
+
+
+=== End of ./core/pipeline/cleaning/base.py ===
+
+
+=== File: ./core/pipeline/cleaning/contract.py ===
+# clm_system/core/pipeline/cleaning/contract.py
+from .base import CleanerABC
+
+class ContractCleaner(CleanerABC):
+    def clean(self, data: dict) -> dict:
+        # e.g. strip whitespace, normalize dates, remove PII
+        # if already clean, return as‑is
+        return data
+
+
+=== End of ./core/pipeline/cleaning/contract.py ===
+
+
+=== File: ./core/pipeline/ingestion/base.py ===
+# file: core/pipeline/ingestion/base.py 
+from abc import ABC, abstractmethod
+
+class IngestorABC(ABC):
+    @abstractmethod
+    def ingest(self, raw: dict) -> dict:
+        pass
+
+
+=== End of ./core/pipeline/ingestion/base.py ===
+
+
+=== File: ./core/pipeline/ingestion/contract.py ===
+# clm_system/core/pipeline/ingestion/contract.py
+import uuid
+from datetime import datetime
+from .base import IngestorABC
+
+class ContractIngestor(IngestorABC):
+    def ingest(self, raw: dict) -> dict:
+        
+        data = raw.copy()
+        data.setdefault("id", str(uuid.uuid4()))
+        now = datetime.utcnow()
+        data["created_at"] = now
+        data["updated_at"] = now
+        return data
+
+
+=== End of ./core/pipeline/ingestion/contract.py ===
+
+
+=== File: ./core/pipeline/orchestrator.py ===
+# clm_system/core/pipeline/orchestrator.py
+import asyncio
+import logging
+from typing import Dict, Any
+from clm_system.core.pipeline.ingestion.contract import ContractIngestor
+from clm_system.core.pipeline.cleaning.contract import ContractCleaner
+from clm_system.core.pipeline.chunking.contract import ContractChunker
+from clm_system.core.database.mongodb_client import MongoDBClient
+from clm_system.core.database.elasticsearch_client import ElasticsearchClient
+from clm_system.core.database.qdrant_client import QdrantClient
+from clm_system.core.utils.embeddings import get_embedding_model, compute_embedding
+
+logger = logging.getLogger(__name__)
+
+class PipelineService:
+    def __init__(self):
+        self.ingestor = ContractIngestor()
+        self.cleaner  = ContractCleaner()
+        self.chunker  = ContractChunker()
+        self.mongo    = MongoDBClient()
+        self.es       = ElasticsearchClient()
+        self.qdrant   = QdrantClient()
+        self.model    = get_embedding_model()
+
+    async def process_contract(self, raw: Dict[str,Any]) -> Dict[str,Any]:
+        # 1) Ingest
+        normalized = self.ingestor.ingest(raw)
+        # 2) Clean
+        cleaned    = self.cleaner.clean(normalized)
+        # 3) Chunk & embed
+        chunks = []
+        for clause in cleaned.get("clauses", []):
+            for text in self.chunker.chunk(clause["text"]):
+                emb = compute_embedding(text, self.model)
+                chunks.append((clause, text, emb))
+        # 4) Persist
+        await self.mongo.insert_contract(cleaned)
+        # prepare ES doc (convert dates → ISO, strip _id)
+        es_doc = cleaned.copy()
+        es_doc.pop("_id", None)
+        await self.es.index_contract(es_doc)
+        # 5) Store embeddings
+        for clause, text, emb in chunks:
+            await self.qdrant.store_embedding(
+                contract_id   = cleaned["id"],
+                contract_title= cleaned["title"],
+                clause_id     = clause["id"],
+                clause_type   = clause["type"],
+                content       = text,
+                metadata      = {**cleaned["metadata"], **clause.get("metadata",{})},
+                embedding     = emb
+            )
+        logger.info(f"Pipeline complete for contract {cleaned['id']}")
+        return {
+            "id": cleaned["id"],
+            "title": cleaned["title"],
+            "clauses_count": len(cleaned.get("clauses",[])),
+            "status": "indexed"
+        }
+
+
+=== End of ./core/pipeline/orchestrator.py ===
+
+
+=== File: ./core/query_engine/helpers.py ===
+def reciprocal_rank_fusion(
+    results_a: List[Dict],
+    results_b: List[Dict],
+    k: int = 60,
+    weight_a: float = 1.0,
+    weight_b: float = 1.0
+) -> List[Dict]:
+    """
+    Combines search results using Reciprocal Rank Fusion algorithm.
+    """
+    fused_results = {}
+    
+    # Process first result list
+    for idx, item in enumerate(results_a):
+        doc_id = f"{item['contract_id']}_{item['clause_id']}"
+        rank = idx + 1
+        score = weight_a * (1 / (k + rank))
+        fused_results[doc_id] = {
+            **item,
+            "rrf_score": score,
+            "origin": "elastic"
+        }
+    
+    # Process second result list and update scores
+    for idx, item in enumerate(results_b):
+        doc_id = f"{item['contract_id']}_{item['clause_id']}"
+        rank = idx + 1
+        score = weight_b * (1 / (k + rank))
+        
+        if doc_id in fused_results:
+            # Document exists in both lists, merge and update score
+            fused_results[doc_id]["rrf_score"] += score
+            fused_results[doc_id]["origin"] = "both"
+            # Keep metadata from both if they differ
+            if item.get("metadata") != fused_results[doc_id].get("metadata"):
+                fused_results[doc_id]["metadata"] = {
+                    **fused_results[doc_id].get("metadata", {}),
+                    **item.get("metadata", {})
+                }
+        else:
+            # New document, add to results
+            fused_results[doc_id] = {
+                **item,
+                "rrf_score": score,
+                "origin": "vector"
+            }
+    
+    # Convert back to list and sort by RRF score
+    combined = list(fused_results.values())
+    sorted_results = sorted(combined, key=lambda x: -x["rrf_score"])
+    
+    # Normalize scores to 0-1 range
+    if sorted_results:
+        max_score = max(r["rrf_score"] for r in sorted_results)
+        if max_score > 0:
+            for r in sorted_results:
+                r["relevance_score"] = r["rrf_score"] / max_score
+                del r["rrf_score"]
+                del r["origin"]  # Clean up temp field
+    
+    return sorted_results
+
+=== End of ./core/query_engine/helpers.py ===
+
+
+=== File: ./core/query_engine/query_classifier.py ===
+import logging
+import time
+from typing import Optional
+import asyncio
+from openai import AsyncOpenAI, APIError, RateLimitError
+from clm_system.config import settings
+
+logger = logging.getLogger(__name__)
+
+class QueryClassifier:
+    def __init__(self):
+        self.client = AsyncOpenAI(api_key=settings.openai_api_key)
+        self.cache = {}  # Simple cache for demo purposes
+        self.cache_ttl = 3600  # 1 hour TTL
+        self.cache_timestamps = {}
+
+    async def classify(self, query: str) -> str:
+        # Check cache and TTL
+        if query in self.cache:
+            timestamp = self.cache_timestamps.get(query, 0)
+            if time.time() - timestamp < self.cache_ttl:
+                return self.cache[query]
+        
+        # Fallback classification in case API fails
+        fallback = self._heuristic_classify(query)
+        
+        max_retries = 3
+        retry_delay = 1.0
+        
+        for attempt in range(max_retries):
+            try:
+                response = await self.client.chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    messages=[{
+                        "role": "system",
+                        "content": """Classify legal contract search queries. Respond with ONE word:
+                        - 'structured' for exact filters/terms (e.g., "contracts with effective date after 2023")
+                        - 'semantic' for conceptual/meaning-based (e.g., "liability clauses protecting against data breaches")
+                        - 'hybrid' for mixed queries (e.g., "confidentiality provisions in NDAs signed after January")"""
+                    }, {
+                        "role": "user",
+                        "content": query
+                    }],
+                    temperature=0.1,
+                    max_tokens=10
+                )
+
+                classification = response.choices[0].message.content.lower().strip()
+                valid = {"structured", "semantic", "hybrid"}
+                result = classification if classification in valid else fallback
+                
+                # Update cache
+                self.cache[query] = result
+                self.cache_timestamps[query] = time.time()
+                return result
+                
+            except RateLimitError:
+                logger.warning(f"Rate limit exceeded on attempt {attempt+1}, retrying in {retry_delay}s")
+                await asyncio.sleep(retry_delay)
+                retry_delay *= 2  # Exponential backoff
+                
+            except APIError as e:
+                logger.error(f"OpenAI API error: {str(e)}")
+                return fallback
+                
+            except Exception as e:
+                logger.error(f"Classification failed: {str(e)}")
+                return fallback
+        
+        # If all retries failed
+        return fallback
+    
+    def _heuristic_classify(self, query: str) -> str:
+        """Fallback classification using heuristics."""
+        structured_keywords = [
+            "date:", "type:", "status:", "party:", "before:", "after:",
+            "contract type", "effective date", "expiration date", "status is"
+        ]
+        
+        has_structured = any(keyword in query.lower() for keyword in structured_keywords)
+        
+        if len(query.split()) <= 3 and not has_structured:
+            return "semantic"
+        
+        if len(query.split()) > 3 and has_structured:
+            return "hybrid"
+        
+        if has_structured:
+            return "structured"
+        
+        return "semantic"
+
+=== End of ./core/query_engine/query_classifier.py ===
+
+
+=== File: ./core/query_engine/search.py ===
+# File: clm_system/core/queryEngine/search.py
+import asyncio
+import logging
+import time
+from typing import Dict, List, Optional, Any, Union
+
+from clm_system.config import settings
+from clm_system.core.database.elasticsearch_client import ElasticsearchClient
+from clm_system.core.database.qdrant_client import QdrantClient
+from clm_system.core.utils.embeddings import get_embedding_model, compute_embedding
+from .query_classifier import QueryClassifier
+from .helpers import reciprocal_rank_fusion  # Add this import
+
+logger = logging.getLogger(__name__)
+
+class QueryRouter:
+    """
+    Routes queries to either structured search (Elasticsearch) or 
+    semantic search (Qdrant) based on query analysis.
+    """
+    
+    def __init__(self):
+        self.es_client = ElasticsearchClient()
+        self.qdrant_client = QdrantClient()
+        self.embedding_model = get_embedding_model()
+        self.top_k = settings.default_top_k
+        self.classifier = QueryClassifier()
+    
+    async def route_query(
+        self, query: str, filters: Optional[Dict[str, Any]] = None, top_k: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """
+        Analyzes the query and routes it to the appropriate search engine.
+        
+        Args:
+            query: User's search query
+            filters: Optional metadata filters
+            top_k: Number of results to return
+            
+        Returns:
+            Dict containing search results and metadata
+        """
+        start_time = time.time()
+        
+        if top_k is None:
+            top_k = self.top_k
+        
+        # Determine query type using classifier
+        query_type = await self.classifier.classify(query)
+        logger.info(f"Query classified as {query_type}: {query}")
+        
+        results = []
+        
+        if query_type == "structured":
+            # Structured search using Elasticsearch
+            results = await self.es_client.search(query, filters, top_k)
+        elif query_type == "semantic":
+            # Semantic search using Qdrant
+            query_embedding = compute_embedding(query, self.embedding_model)
+            results = await self.qdrant_client.search(query_embedding, filters, top_k)
+        else:  # hybrid
+            # Compute embedding here before passing to search
+            query_embedding = compute_embedding(query, self.embedding_model)
+            
+            # Run searches in parallel
+            es_results, qdrant_results = await asyncio.gather(
+                self.es_client.search(query, filters, top_k * 2),
+                self.qdrant_client.search(query_embedding, filters, top_k * 2)
+            )
+            
+            # Combine results using RRF
+            results = reciprocal_rank_fusion(
+                es_results,
+                qdrant_results,
+                k=60,
+                weight_a=0.4,  # Elasticsearch weight
+                weight_b=0.6   # Vector search weight
+            )[:top_k]
+        
+        execution_time = (time.time() - start_time) * 1000  # Convert to milliseconds
+        
+        return {
+            "query": query,
+            "total_results": len(results),
+            "results": results,
+            "metadata": {
+                "query_type": query_type,
+                "filters_applied": filters is not None
+            },
+            "execution_time_ms": execution_time
+        }
+    
+    # This method is no longer needed since we're using the QueryClassifier
+    # It can be removed or kept as a fallback
+    def _heuristic_classify(self, query: str) -> str:
+        """
+        Classifies a query as structured, semantic, or hybrid using heuristics.
+        Used as a fallback when classifier is unavailable.
+        
+        Args:
+            query: The user's search query
+            
+        Returns:
+            String indicating query type: "structured", "semantic", or "hybrid"
+        """
+        structured_keywords = [
+            "date:", "type:", "status:", "party:", "before:", "after:",
+            "contract type", "effective date", "expiration date", "status is"
+        ]
+        
+        has_structured = any(keyword in query.lower() for keyword in structured_keywords)
+        
+        if len(query.split()) <= 3 and not has_structured:
+            return "semantic"
+        
+        if len(query.split()) > 3 and has_structured:
+            return "hybrid"
+        
+        if has_structured:
+            return "structured"
+        
+        return "semantic"
+
+=== End of ./core/query_engine/search.py ===
+
+
+=== File: ./core/utils/embeddings.py ===
+
+
+# File: clm_system/core/utils/embeddings.py
+import logging
+from typing import List, Optional
+
+import torch
+from sentence_transformers import SentenceTransformer
+
+from clm_system.config import settings
+
+logger = logging.getLogger(__name__)
+
+# Global cache for embedding model
+_embedding_model = None
+
+def get_embedding_model() -> SentenceTransformer:
+    """
+    Gets or initializes the embedding model.
+    
+    Returns:
+        SentenceTransformer model instance
+    """
+    global _embedding_model
+    
+    if _embedding_model is None:
+        logger.info(f"Loading embedding model: {settings.embedding_model}")
+        try:
+            _embedding_model = SentenceTransformer(settings.embedding_model)
+            logger.info(f"Embedding model loaded successfully")
+        except Exception as e:
+            logger.error(f"Error loading embedding model: {str(e)}")
+            raise
+    
+    return _embedding_model
+
+def compute_embedding(text: str, model: Optional[SentenceTransformer] = None) -> List[float]:
+    """
+    Computes embedding for a given text.
+    
+    Args:
+        text: Input text to embed
+        model: Optional pre-loaded model (if not provided, will get from cache)
+        
+    Returns:
+        List of floats representing the text embedding
+    """
+    if model is None:
+        model = get_embedding_model()
+    
+    try:
+        # Compute embedding
+        embedding = model.encode(text)
+        
+        # Convert to list if it's a tensor or numpy array
+        if isinstance(embedding, torch.Tensor):
+            embedding = embedding.tolist()
+        elif hasattr(embedding, "tolist"):
+            embedding = embedding.tolist()
+        
+        return embedding
+    except Exception as e:
+        logger.error(f"Error computing embedding: {str(e)}")
+        raise
+
+=== End of ./core/utils/embeddings.py ===
+
+
+=== File: ./core/utils/__init__.py ===
+
+
+=== End of ./core/utils/__init__.py ===
+
+
+=== File: ./core/__init__.py ===
+
+
+=== End of ./core/__init__.py ===
+
+
+=== File: ./main.py ===
+# File: clm_system/main.py
+import logging
+import os
+
+import uvicorn
+from dotenv import load_dotenv
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from clm_system.api.routes import router as api_router
+from clm_system.config import settings
+
+# Load environment variables
+load_dotenv()
+
+# Configure logging
+logging.basicConfig(
+    level=getattr(logging, os.getenv("LOG_LEVEL", "INFO")),
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+)
+logger = logging.getLogger(__name__)
+
+# Create FastAPI app
+app = FastAPI(
+    title="CLM Smart Search",
+    description="Contract Lifecycle Management with Smart Search capabilities",
+    version="0.1.0",
+)
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # For production, specify exact origins
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Include API routes
+app.include_router(api_router, prefix="/api")
+
+# Health check endpoint
+@app.get("/health")
+async def health_check():
+    return {"status": "ok"}
+
+if __name__ == "__main__":
+    logger.info(f"Starting server on {settings.api_host}:{settings.api_port}")
+    uvicorn.run(
+        "clm_system.main:app",
+        host=settings.api_host,
+        port=settings.api_port,
+        reload=True,
+    )
+
+
+# File: clm_system/core/database/mongodb_client.py
+import logging
+from typing import Dict, List, Any, Optional
+
+from pymongo import MongoClient
+from pymongo.errors import PyMongoError
+
+from clm_system.config import settings
+
+logger = logging.getLogger(__name__)
+
+class MongoDBClient:
+    """Client for interacting with MongoDB."""
+    
+    def __init__(self):
+        self.client = MongoClient(settings.mongodb_uri)
+        self.db = self.client[settings.mongodb_database]
+        self.contracts_collection = self.db["contracts"]
+    
+    async def insert_contract(self, contract: Dict[str, Any]) -> str:
+        """
+        Inserts a contract into the MongoDB collection.
+        
+        Args:
+            contract: Contract data
+            
+        Returns:
+            ID of the inserted contract
+        """
+        try:
+            # Convert datetime to string for MongoDB
+            contract = contract.copy()
+            if "created_at" in contract:
+                contract["created_at"] = contract["created_at"].isoformat()
+            if "updated_at" in contract:
+                contract["updated_at"] = contract["updated_at"].isoformat()
+                
+            result = self.contracts_collection.insert_one(contract)
+            return str(result.inserted_id)
+        except PyMongoError as e:
+            logger.error(f"MongoDB insert error: {str(e)}")
+            raise
+        
+    async def get_contract(self, contract_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Retrieves a contract by ID.
+        
+        Args:
+            contract_id: ID of the contract to retrieve
+            
+        Returns:
+            Contract data or None if not found
+        """
+        try:
+            contract = self.contracts_collection.find_one({"id": contract_id})
+            return contract
+        except PyMongoError as e:
+            logger.error(f"MongoDB get error: {str(e)}")
+            raise
+    
+    async def get_contracts(
+        self, filters: Optional[Dict[str, Any]] = None, limit: int = 100, skip: int = 0
+    ) -> List[Dict[str, Any]]:
+        """
+        Retrieves contracts matching the given filters.
+        
+        Args:
+            filters: Query filters
+            limit: Maximum number of contracts to return
+            skip: Number of contracts to skip
+            
+        Returns:
+            List of contracts
+        """
+        try:
+            query = filters or {}
+            contracts = list(
+                self.contracts_collection
+                .find(query)
+                .limit(limit)
+                .skip(skip)
+            )
+            return contracts
+        except PyMongoError as e:
+            logger.error(f"MongoDB get_contracts error: {str(e)}")
+            raise
+
+
+=== End of ./main.py ===
+
+
+=== File: ./schemas/schemas.py ===
+# File: clm_system/api/schemas.py
+from pydantic import BaseModel, Field
+from typing import Dict, List, Optional, Any, Union
+from datetime import datetime
+
+
+class ClauseBase(BaseModel):
+    """Base schema for contract clauses."""
+    id: Optional[str] = None
+    title: Optional[str] = None
+    type: str
+    text: str
+    position: Optional[int] = None
+    metadata: Optional[Dict[str, Any]] = Field(default_factory=dict)
+
+
+class ContractMetadata(BaseModel):
+    """Metadata for contracts."""
+    contract_type: str
+    effective_date: Optional[datetime] = None
+    expiration_date: Optional[datetime] = None
+    parties: List[Dict[str, str]] = Field(default_factory=list)
+    status: Optional[str] = None
+    tags: Optional[List[str]] = Field(default_factory=list)
+    additional_metadata: Optional[Dict[str, Any]] = Field(default_factory=dict)
+
+
+class ContractCreate(BaseModel):
+    """Schema for creating a new contract."""
+    title: str
+    metadata: ContractMetadata
+    clauses: List[ClauseBase]
+
+
+class ContractResponse(BaseModel):
+    """Response schema for contract operations."""
+    id: str
+    title: str
+    metadata: ContractMetadata
+    created_at: datetime
+    updated_at: datetime
+    clauses_count: int
+    status: str = "indexed"
+
+
+class QueryRequest(BaseModel):
+    """Schema for search queries."""
+    query: str
+    filters: Optional[Dict[str, Any]] = None
+    top_k: Optional[int] = 5
+
+
+class ClauseSearchResult(BaseModel):
+    """Result schema for clause search."""
+    clause_id: str
+    contract_id: str
+    contract_title: str
+    clause_type: str
+    clause_title: Optional[str] = None
+    content: str
+    relevance_score: float
+    metadata: Optional[Dict[str, Any]] = None
+
+
+class QueryResponse(BaseModel):
+    """Response schema for search queries."""
+    query: str
+    total_results: int
+    results: List[ClauseSearchResult]
+    metadata: Optional[Dict[str, Any]] = None
+    execution_time_ms: float
+
+
+=== End of ./schemas/schemas.py ===
+
+
+=== File: ./temp.py ===
+
+
+=== End of ./temp.py ===
+
+
+=== File: ./test.py ===
+import pytest
+import asyncio
+from unittest.mock import MagicMock, patch
+
+from clm_system.core.queryEngine.search import QueryRouter
+
+@pytest.fixture
+def sample_contract():
+    """Sample contract data for testing."""
+    return {
+        "id": "test-contract-123",
+        "title": "Software License Agreement",
+        "metadata": {
+            "contract_type": "license",
+            "effective_date": "2023-01-01T00:00:00Z",
+            "expiration_date": "2024-01-01T00:00:00Z",
+            "parties": [
+                {"name": "ACME Corp", "id": "party-001"},
+                {"name": "Supplier Inc", "id": "party-002"}
+            ],
+            "status": "active",
+            "tags": ["software", "license", "annual"]
+        },
+        "clauses": [
+            {
+                "id": "clause-001",
+                "title": "License Grant",
+                "type": "grant",
+                "text": "Licensor hereby grants to Licensee a non-exclusive, non-transferable license to use the Software.",
+                "position": 1
+            },
+            {
+                "id": "clause-002",
+                "title": "Term and Termination",
+                "type": "term",
+                "text": "This Agreement shall commence on the Effective Date and continue for a period of one (1) year.",
+                "position": 2
+            }
+        ]
+    }
+
+@pytest.mark.asyncio
+async def test_query_router_classification():
+    """Test query classification logic."""
+    router = QueryRouter()
+    
+    # Test structured query classification
+    structured_queries = [
+        "contracts with effective date after 2023-01-01",
+        "status: active type: license",
+        "find contracts with party: ACME Corp",
+        "contract type: license"
+    ]
+    
+    for query in structured_queries:
+        assert router._classify_query(query) in ["structured", "hybrid"], f"Failed for: {query}"
+    
+    # Test semantic query classification
+    semantic_queries = [
+        "what are the license terms",
+        "termination conditions",
+        "find software agreements"
+    ]
+    
+    for query in semantic_queries:
+        assert router._classify_query(query) == "semantic", f"Failed for: {query}"
+
+@pytest.mark.asyncio
+async def test_route_query():
+    """Test query routing to appropriate search engines."""
+    # Mock the Elasticsearch and Qdrant clients
+    with patch('clm_system.core.search.ElasticsearchClient') as mock_es, \
+         patch('clm_system.core.search.QdrantClient') as mock_qdrant, \
+         patch('clm_system.core.search.compute_embedding') as mock_compute_embedding:
+        
+        # Setup mocks
+        mock_es_instance = mock_es.return_value
+        mock_es_instance.search.return_value = [{"clause_id": "test1"}]
+        
+        mock_qdrant_instance = mock_qdrant.return_value
+        mock_qdrant_instance.search.return_value = [{"clause_id": "test2"}]
+        
+        mock_compute_embedding.return_value = [0.1] * 384  # Mock embedding
+        
+        router = QueryRouter()
+        router.es_client = mock_es_instance
+        router.qdrant_client = mock_qdrant_instance
+        
+        # Test structured query routing
+        structured_result = await router.route_query("contract type: license", {"status": "active"})
+        assert structured_result["query_type"] == "structured"
+        assert mock_es_instance.search.called
+        
+        # Test semantic query routing
+        semantic_result = await router.route_query("what are termination conditions")
+        assert semantic_result["query_type"] == "semantic"
+        assert mock_qdrant_instance.search.called
+        
+        # Test hybrid query routing
+        mock_es_instance.search.reset_mock()
+        mock_qdrant_instance.search.reset_mock()
+        
+        hybrid_result = await router.route_query("find active license contracts with termination clause")
+        assert hybrid_result["query_type"] == "hybrid"
+        assert mock_es_instance.search.called
+        assert mock_qdrant_instance.search.called
+
+=== End of ./test.py ===
+
+
+=== File: ./__init__.py ===
+
+
+=== End of ./__init__.py ===
+
+

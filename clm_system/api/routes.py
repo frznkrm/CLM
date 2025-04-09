@@ -2,14 +2,14 @@
 from fastapi import APIRouter, Depends, HTTPException
 from typing import Optional
 
-from clm_system.api.schemas import (
+from clm_system.schemas.schemas import (
     ContractCreate,
     ContractResponse,
     QueryRequest,
     QueryResponse
 )
 from clm_system.core.pipeline.pipeline import ContractPipeline  # ✅ New pipeline
-from clm_system.core.search import QueryRouter
+from clm_system.core.queryEngine.search import QueryRouter
 
 router = APIRouter()
 

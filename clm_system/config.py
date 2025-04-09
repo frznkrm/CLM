@@ -8,6 +8,14 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class Settings(BaseSettings):
+    
+    openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
+    embedding_model: str = os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")
+    chunk_size: int = int(os.getenv("CHUNK_SIZE", "512"))
+    chunk_overlap: int = int(os.getenv("CHUNK_OVERLAP", "128"))
+    default_top_k: int = int(os.getenv("DEFAULT_TOP_K", "5"))
+    classifier_cache_ttl: int = int(os.getenv("CLASSIFIER_CACHE_TTL", "3600"))
+    
     # MongoDB settings
     mongodb_uri: str = Field(..., env="MONGODB_URI")
     mongodb_database: str = Field("clm_db", env="MONGODB_DATABASE")
@@ -40,7 +48,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = False
-
+    
 
 @lru_cache()
 def get_settings() -> Settings:

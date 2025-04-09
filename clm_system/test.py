@@ -2,7 +2,7 @@ import pytest
 import asyncio
 from unittest.mock import MagicMock, patch
 
-from clm_system.core.search import QueryRouter
+from clm_system.core.queryEngine.search import QueryRouter
 
 @pytest.fixture
 def sample_contract():
