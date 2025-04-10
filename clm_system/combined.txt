@@ -35,7 +35,7 @@ async def ingest_contract(contract: ContractCreate):
         Processed contract information
     """
     try:
-        result = await pipeline.process_contract(contract.dict())
+        result = await pipeline.process_document(contract.dict())
         return result
     except Exception as e:
         logger.error(f"Error ingesting contract: {e}")
@@ -90,7 +90,7 @@ async def ingest_pdf_contract(
             raise HTTPException(status_code=400, detail=f"Invalid contract structure: {ve}")
         
         # Process through pipeline
-        result = await pipeline.process_contract(contract_obj.dict())
+        result = await pipeline.process_document(contract.dict())
         return result
         
     except Exception as e:
@@ -207,9 +207,9 @@ from pydantic import ValidationError
 
 from clm_system.schemas.schemas import ContractCreate
 from clm_system.core.pipeline.orchestrator import PipelineService
-from clm_system.core.queryEngine.search import QueryRouter
+from clm_system.core.query_engine.search import QueryRouter
 from clm_system.core.utils.embeddings import get_embedding_model, compute_embedding
-
+from clm_system.core.pipeline.preprocessing.pdf_processor import PDFProcessor
 # Load environment variables
 load_dotenv()
 
@@ -258,7 +258,7 @@ async def ingest(file_path):
 
     # 3) Run through your pipeline
     try:
-        result = await pipeline.process_contract(contract_obj.dict())
+        result = await pipeline.process_document(contract_obj.dict())
     except Exception as e:
         click.echo(f"Error ingesting contract: {e}", err=True)
         return
@@ -361,7 +361,7 @@ async def ingest_pdf(pdf_path, title=None, contract_type=None, tags=None):
             return
         
         # Process through pipeline
-        result = await pipeline.process_contract(contract_obj.dict())
+        result = await pipeline.process_document(contract_obj.dict())
         
         # Success output
         click.echo(f"PDF contract ingested successfully: {result['id']}")
@@ -666,9 +666,9 @@ class MongoDBClient:
     """Client for interacting with MongoDB."""
     
     def __init__(self):
-        self.client = MongoClient(settings.mongodb_uri)
+        self.client = AsyncIOMotorClient(settings.mongodb_uri)
         self.db = self.client[settings.mongodb_database]
-        self.contracts_collection = self.db["contracts"]
+        self.contracts_collection = self.db.contracts
     
     async def insert_contract(self, contract: Dict[str, Any]) -> str:
         """
@@ -688,7 +688,8 @@ class MongoDBClient:
             if "updated_at" in contract:
                 contract["updated_at"] = contract["updated_at"].isoformat()
                 
-            result = self.contracts_collection.insert_one(contract)
+            # Use async insert
+            result = await self.contracts_collection.insert_one(contract)
             return str(result.inserted_id)
         except PyMongoError as e:
             logger.error(f"MongoDB insert error: {str(e)}")
@@ -985,8 +986,10 @@ from clm_system.config import settings
 
 class ContractChunker(ChunkerABC):
     def __init__(self):
-        self.nlp = spacy.load("en_core_web_sm")
-        self.nlp.disable_pipes("parser", "ner")  # Keep only tokenizer/sentence boundary detection
+        # Create blank English pipeline with just the sentencizer
+        self.nlp = English()
+        self.nlp.add_pipe("sentencizer")
+        logger.info("SpaCy pipeline components: %s", self.nlp.pipe_names)
 
     def chunk(self, text: str) -> List[str]:
         doc = self.nlp(text)
@@ -1027,6 +1030,216 @@ class ContractChunker(ChunkerABC):
 === End of ./core/pipeline/chunking/contract.py ===
 
 
+=== File: ./core/pipeline/chunking/deal.py ===
+# clm_system/core/pipeline/chunking/deal.py
+from typing import List
+import re
+from .base import ChunkerABC
+from clm_system.config import settings
+
+class DealChunker(ChunkerABC):
+    """Chunker for oil industry deal documents."""
+    
+    def chunk(self, text: str) -> List[str]:
+        """
+        Split deal text into semantic chunks for embedding.
+        
+        Args:
+            text: Input text to chunk
+            
+        Returns:
+            List of text chunks
+        """
+        if not text:
+            return []
+            
+        # Get configuration
+        size = settings.chunk_size
+        overlap = settings.chunk_overlap
+        
+        # Split on section boundaries first
+        sections = self._split_sections(text)
+        
+        # Process each section
+        chunks = []
+        for section in sections:
+            # If section is already small enough, keep as is
+            if len(section.split()) <= size:
+                chunks.append(section)
+                continue
+                
+            # Otherwise, chunk using sliding window
+            tokens = section.split()
+            for i in range(0, len(tokens), size - overlap):
+                chunk_tokens = tokens[i:min(i + size, len(tokens))]
+                if chunk_tokens:
+                    chunks.append(" ".join(chunk_tokens))
+        
+        # Ensure each chunk is non-empty and deduplicate
+        return [chunk for chunk in chunks if chunk.strip()]
+    
+    def _split_sections(self, text: str) -> List[str]:
+        """Split text into logical sections based on headers/markers."""
+        # Common section markers in oil & gas deals
+        section_markers = [
+            r'DEAL SUMMARY',
+            r'PRICING TERMS',
+            r'VOLUME DETAILS',
+            r'DELIVERY TERMS',
+            r'QUALITY SPECIFICATIONS',
+            r'PAYMENT TERMS',
+            r'SPECIAL PROVISIONS',
+            r'FORCE MAJEURE',
+            r'REGULATORY COMPLIANCE',
+        ]
+        
+        # Create a regex pattern matching any of the section markers
+        pattern = '|'.join(f'({marker})' for marker in section_markers)
+        
+        # Find all matches
+        matches = list(re.finditer(pattern, text, re.IGNORECASE))
+        
+        if not matches:
+            # No section markers found, return whole text
+            return [text]
+        
+        # Extract sections using the positions of the matches
+        sections = []
+        
+        # First section (from start to first match)
+        if matches[0].start() > 0:
+            sections.append(text[:matches[0].start()].strip())
+        
+        # Middle sections
+        for i in range(len(matches)):
+            start = matches[i].start()
+            end = matches[i+1].start() if i < len(matches) - 1 else len(text)
+            section_text = text[start:end].strip()
+            if section_text:
+                sections.append(section_text)
+        
+        return sections
+
+=== End of ./core/pipeline/chunking/deal.py ===
+
+
+=== File: ./core/pipeline/chunking/email.py ===
+# clm_system/core/pipeline/chunking/email.py
+from typing import List
+import re
+from .base import ChunkerABC
+from clm_system.config import settings
+
+class EmailChunker(ChunkerABC):
+    """Chunker for email documents."""
+    
+    def chunk(self, text: str) -> List[str]:
+        """
+        Split email text into semantic chunks for embedding.
+        
+        Args:
+            text: Input text to chunk
+            
+        Returns:
+            List of text chunks
+        """
+        if not text:
+            return []
+            
+        # Get configuration
+        size = settings.chunk_size
+        overlap = settings.chunk_overlap
+        
+        # First identify logical parts (greeting, body, signature, etc.)
+        parts = self._split_email_parts(text)
+        
+        # Process each part
+        chunks = []
+        for part in parts:
+            # Short parts can be kept as-is
+            if len(part.split()) <= size:
+                chunks.append(part)
+                continue
+                
+            # For longer parts, chunk with sliding window
+            tokens = part.split()
+            for i in range(0, len(tokens), size - overlap):
+                chunk_tokens = tokens[i:min(i + size, len(tokens))]
+                if chunk_tokens:  # Ensure non-empty
+                    chunks.append(" ".join(chunk_tokens))
+        
+        # Ensure each chunk is non-empty and deduplicate
+        return [chunk for chunk in chunks if chunk.strip()]
+    
+    def _split_email_parts(self, text: str) -> List[str]:
+        """Split email into logical parts (greeting, body, signature, etc.)."""
+        # Try to identify parts based on common patterns
+        
+        # Check for greeting
+        greeting_patterns = [
+            r'^(Dear\s+[^,\n]+[,\n])',
+            r'^(Hi\s+[^,\n]+[,\n])',
+            r'^(Hello\s+[^,\n]+[,\n])',
+            r'^(Good\s+(morning|afternoon|evening)[^,\n]*[,\n])'
+        ]
+        
+        # Check for signature
+        signature_patterns = [
+            r'(Best\s+regards,?\s*\n+.+)$',
+            r'(Regards,?\s*\n+.+)$',
+            r'(Thanks,?\s*\n+.+)$',
+            r'(Thank\s+you,?\s*\n+.+)$',
+            r'(Sincerely,?\s*\n+.+)$',
+            r'(--\s*\n+.+)$'
+        ]
+        
+        # Initialize parts
+        parts = []
+        remaining_text = text
+        
+        # Extract greeting
+        for pattern in greeting_patterns:
+            match = re.search(pattern, remaining_text, re.IGNORECASE | re.MULTILINE)
+            if match:
+                greeting = match.group(1).strip()
+                if greeting:
+                    parts.append(greeting)
+                remaining_text = remaining_text[match.end():].strip()
+                break
+        
+        # Extract signature
+        signature = None
+        for pattern in signature_patterns:
+            match = re.search(pattern, remaining_text, re.IGNORECASE | re.MULTILINE | re.DOTALL)
+            if match:
+                signature = match.group(1).strip()
+                remaining_text = remaining_text[:match.start()].strip()
+                break
+        
+        # Process the body (remaining text)
+        if remaining_text:
+            # Try to split by paragraphs
+            paragraphs = re.split(r'\n{2,}', remaining_text)
+            
+            # Add each significant paragraph as a separate part
+            for paragraph in paragraphs:
+                cleaned = paragraph.strip()
+                if cleaned and len(cleaned) > 10:  # Avoid tiny fragments
+                    parts.append(cleaned)
+        
+        # Add signature at the end if found
+        if signature:
+            parts.append(signature)
+        
+        # If no parts were identified, return original text
+        if not parts:
+            return [text]
+            
+        return parts
+
+=== End of ./core/pipeline/chunking/email.py ===
+
+
 === File: ./core/pipeline/cleaning/base.py ===
 # file: core/pipeline/cleaning/base.py 
 from abc import ABC, abstractmethod
@@ -1052,6 +1265,426 @@ class ContractCleaner(CleanerABC):
 
 
 === End of ./core/pipeline/cleaning/contract.py ===
+
+
+=== File: ./core/pipeline/cleaning/deal.py ===
+# clm_system/core/pipeline/cleaning/deal.py
+import re
+from .base import CleanerABC
+
+class DealCleaner(CleanerABC):
+    def clean(self, data: dict) -> dict:
+        """
+        Clean and normalize oil industry deal data.
+        
+        Args:
+            data: Raw deal data
+            
+        Returns:
+            Cleaned deal data
+        """
+        cleaned = data.copy()
+        
+        # Normalize deal types (lowercase, replace spaces with underscores)
+        if "metadata" in cleaned and "deal_type" in cleaned["metadata"]:
+            cleaned["metadata"]["deal_type"] = cleaned["metadata"]["deal_type"].lower().replace(" ", "_")
+        
+        # Standardize location formatting if present
+        if "metadata" in cleaned and "location" in cleaned["metadata"]:
+            cleaned["metadata"]["location"] = self._normalize_location(cleaned["metadata"]["location"])
+            
+        # Clean monetary values
+        for field in ["price_per_unit", "total_value"]:
+            if "metadata" in cleaned and field in cleaned["metadata"]:
+                cleaned["metadata"][field] = self._normalize_monetary_value(cleaned["metadata"][field])
+        
+        # Clean volume 
+        if "metadata" in cleaned and "volume" in cleaned["metadata"]:
+            cleaned["metadata"]["volume"] = self._normalize_volume(cleaned["metadata"]["volume"])
+                
+        # Clean clauses text
+        if "clauses" in cleaned:
+            for clause in cleaned["clauses"]:
+                if "text" in clause:
+                    clause["text"] = self._clean_text(clause["text"])
+        
+        return cleaned
+    
+    def _normalize_location(self, location: str) -> str:
+        """Normalize location strings."""
+        if not location or not isinstance(location, str):
+            return location
+            
+        # Convert to title case
+        location = location.title()
+        
+        # Handle common abbreviations
+        abbreviations = {
+            " Usa": " USA",
+            " Uk": " UK",
+            " Uae": " UAE",
+        }
+        for abbr, replacement in abbreviations.items():
+            location = location.replace(abbr, replacement)
+            
+        return location
+    
+    def _normalize_monetary_value(self, value):
+        """Normalize monetary values to numeric format."""
+        if isinstance(value, (int, float)):
+            return value
+            
+        if not value or not isinstance(value, str):
+            return value
+            
+        # Remove currency symbols and commas
+        value = re.sub(r'[$£€,]', '', value)
+        
+        # Extract numeric part
+        match = re.search(r'([\d.]+)', value)
+        if match:
+            try:
+                return float(match.group(1))
+            except ValueError:
+                pass
+                
+        return value
+    
+    def _normalize_volume(self, volume):
+        """Normalize volume values."""
+        if isinstance(volume, (int, float)):
+            return volume
+            
+        if not volume or not isinstance(volume, str):
+            return volume
+            
+        # Remove commas, standardize units
+        volume = re.sub(r'[,]', '', volume)
+        
+        # Match number and unit
+        match = re.search(r'([\d.]+)\s*([a-zA-Z]+)', volume)
+        if match:
+            try:
+                value = float(match.group(1))
+                unit = match.group(2).lower()
+                
+                # Standardize units
+                unit_mapping = {
+                    'bbl': 'bbl',
+                    'barrel': 'bbl',
+                    'barrels': 'bbl',
+                    'bbls': 'bbl',
+                    'mcf': 'mcf',
+                    'mmcf': 'mmcf',
+                    'boe': 'boe',
+                }
+                
+                if unit in unit_mapping:
+                    return f"{value} {unit_mapping[unit]}"
+                return volume
+            except ValueError:
+                pass
+                
+        return volume
+    
+    def _clean_text(self, text: str) -> str:
+        """Clean text content."""
+        if not text or not isinstance(text, str):
+            return text
+            
+        # Remove excessive whitespace
+        text = re.sub(r'\s+', ' ', text)
+        
+        # Fix common OCR errors in oil & gas terminology
+        corrections = {
+            "0il": "Oil",
+            "0ffshore": "Offshore",
+            "C0ntract": "Contract",
+            "Petr0leum": "Petroleum",
+        }
+        
+        for error, correction in corrections.items():
+            text = text.replace(error, correction)
+            
+        return text.strip()
+
+=== End of ./core/pipeline/cleaning/deal.py ===
+
+
+=== File: ./core/pipeline/cleaning/email.py ===
+# clm_system/core/pipeline/cleaning/email.py
+import re
+from html import unescape
+from bs4 import BeautifulSoup
+from .base import CleanerABC
+
+class EmailCleaner(CleanerABC):
+    def clean(self, data: dict) -> dict:
+        """
+        Clean and normalize email data.
+        
+        Args:
+            data: Raw email data
+            
+        Returns:
+            Cleaned email data
+        """
+        cleaned = data.copy()
+        
+        # Clean email addresses
+        for field in ["from", "to", "cc", "bcc"]:
+            if "metadata" in cleaned and field in cleaned["metadata"]:
+                if isinstance(cleaned["metadata"][field], list):
+                    cleaned["metadata"][field] = [
+                        self._normalize_email(email) for email in cleaned["metadata"][field]
+                    ]
+                else:
+                    cleaned["metadata"][field] = self._normalize_email(cleaned["metadata"][field])
+        
+        # Clean title/subject
+        if "title" in cleaned:
+            cleaned["title"] = self._clean_subject(cleaned["title"])
+            
+        # Clean clauses text (usually email body)
+        if "clauses" in cleaned:
+            for clause in cleaned["clauses"]:
+                if "text" in clause:
+                    # Check if this is HTML content
+                    if clause.get("metadata", {}).get("format") == "html" or \
+                       (clause["text"].startswith("<") and ">" in clause["text"]):
+                        clause["text"] = self._clean_html(clause["text"])
+                    else:
+                        clause["text"] = self._clean_text(clause["text"])
+        
+        return cleaned
+    
+    def _normalize_email(self, email_address):
+        """Normalize email addresses."""
+        if not email_address:
+            return email_address
+            
+        if isinstance(email_address, str):
+            # Convert to lowercase
+            email_address = email_address.lower()
+            
+            # Extract actual email from "Name <email>" format
+            match = re.search(r'<([^>]+)>', email_address)
+            if match:
+                email_address = match.group(1)
+                
+            # Remove whitespace
+            email_address = email_address.strip()
+            
+        return email_address
+    
+    def _clean_subject(self, subject):
+        """Clean email subject/title."""
+        if not subject:
+            return subject
+            
+        # Remove common prefixes
+        prefixes = ["RE:", "FW:", "FWD:", "Re:", "Fw:", "Fwd:"]
+        cleaned_subject = subject
+        for prefix in prefixes:
+            if cleaned_subject.startswith(prefix):
+                cleaned_subject = cleaned_subject[len(prefix):].strip()
+                
+        # Remove excessive whitespace
+        cleaned_subject = re.sub(r'\s+', ' ', cleaned_subject)
+        
+        return cleaned_subject.strip()
+    
+    def _clean_html(self, html_content):
+        """Convert HTML content to plain text."""
+        if not html_content:
+            return ""
+            
+        try:
+            # Parse HTML
+            soup = BeautifulSoup(html_content, 'html.parser')
+            
+            # Remove scripts, styles, and hidden divs
+            for tag in soup(["script", "style", "meta", "head"]):
+                tag.extract()
+                
+            # Get text content
+            text = soup.get_text(separator=' ')
+            
+            # Remove excessive whitespace
+            text = re.sub(r'\s+', ' ', text)
+            
+            # Replace HTML entities
+            text = unescape(text)
+            
+            # Remove email signature markers and footers
+            signature_markers = ["--", "Best regards", "Regards", "Thanks,", "Thank you,", "Sincerely,"]
+            for marker in signature_markers:
+                if marker in text:
+                    # Find position and truncate (keeping some context)
+                    pos = text.find(marker)
+                    # Keep the marker but limit what comes after
+                    signature_limit = min(pos + 100, len(text))
+                    text = text[:signature_limit]
+                    break
+                    
+            return text.strip()
+        except Exception:
+            # If HTML parsing fails, fall back to simple cleanup
+            return self._clean_text(html_content)
+    
+    def _clean_text(self, text):
+        """Clean plain text email content."""
+        if not text:
+            return ""
+            
+        # Remove excessive line breaks
+        text = re.sub(r'\n{3,}', '\n\n', text)
+        
+        # Remove common email quotes (lines starting with >)
+        lines = text.split('\n')
+        cleaned_lines = [line for line in lines if not line.strip().startswith('>')]
+        text = '\n'.join(cleaned_lines)
+        
+        # Remove common signature separators
+        text = re.sub(r'-{2,}|_{2,}|={2,}', '', text)
+        
+        # Remove common email footers
+        footer_patterns = [
+            r'Sent from my iPhone',
+            r'Sent from my mobile device',
+            r'Get Outlook for',
+            r'CONFIDENTIALITY NOTICE:',
+            r'DISCLAIMER:',
+            r'PRIVILEGED AND CONFIDENTIAL',
+        ]
+        
+        for pattern in footer_patterns:
+            match = re.search(pattern, text)
+            if match:
+                text = text[:match.start()]
+                
+        return text.strip()
+
+=== End of ./core/pipeline/cleaning/email.py ===
+
+
+=== File: ./core/pipeline/cleaning/recap.py ===
+# clm_system/core/pipeline/cleaning/recap.py
+import re
+from .base import CleanerABC
+
+class RecapCleaner(CleanerABC):
+    def clean(self, data: dict) -> dict:
+        """
+        Clean and normalize recap/summary data.
+        
+        Args:
+            data: Raw recap data
+            
+        Returns:
+            Cleaned recap data
+        """
+        cleaned = data.copy()
+        
+        # Normalize recap type
+        if "metadata" in cleaned and "recap_type" in cleaned["metadata"]:
+            cleaned["metadata"]["recap_type"] = cleaned["metadata"]["recap_type"].lower().replace(" ", "_")
+        
+        # Clean title
+        if "title" in cleaned:
+            cleaned["title"] = self._clean_title(cleaned["title"])
+        
+        # Clean participant names if present
+        if "metadata" in cleaned and "participants" in cleaned["metadata"]:
+            if isinstance(cleaned["metadata"]["participants"], list):
+                cleaned["metadata"]["participants"] = [
+                    self._clean_name(participant) for participant in cleaned["metadata"]["participants"]
+                ]
+        
+        # Clean author name
+        if "metadata" in cleaned and "author" in cleaned["metadata"]:
+            cleaned["metadata"]["author"] = self._clean_name(cleaned["metadata"]["author"])
+                
+        # Clean clauses text
+        if "clauses" in cleaned:
+            for clause in cleaned["clauses"]:
+                if "text" in clause:
+                    clause["text"] = self._clean_text(clause["text"])
+                if "title" in clause:
+                    clause["title"] = self._clean_title(clause["title"])
+        
+        return cleaned
+    
+    def _clean_title(self, title):
+        """Clean recap title."""
+        if not title:
+            return title
+            
+        # Remove unnecessary prefixes
+        prefixes = ["RECAP:", "SUMMARY:", "MINUTES:", "Meeting:"]
+        for prefix in prefixes:
+            if title.startswith(prefix):
+                title = title[len(prefix):].strip()
+        
+        # Remove excessive whitespace
+        title = re.sub(r'\s+', ' ', title)
+        
+        # Ensure first letter is capitalized
+        if title:
+            title = title[0].upper() + title[1:]
+            
+        return title.strip()
+    
+    def _clean_name(self, name):
+        """Clean person names."""
+        if not name or not isinstance(name, str):
+            return name
+            
+        # Remove titles
+        titles = ["Mr.", "Mrs.", "Ms.", "Dr.", "Prof."]
+        for title in titles:
+            if name.startswith(title):
+                name = name[len(title):].strip()
+        
+        # Remove parenthetical information (like departments)
+        name = re.sub(r'\([^)]*\)', '', name)
+        
+        # Normalize capitalization
+        name = name.title()
+        
+        return name.strip()
+    
+    def _clean_text(self, text):
+        """Clean recap text content."""
+        if not text or not isinstance(text, str):
+            return text
+            
+        # Remove excessive whitespace
+        text = re.sub(r'\s+', ' ', text)
+        
+        # Remove page numbers and headers/footers
+        text = re.sub(r'Page \d+ of \d+', '', text)
+        text = re.sub(r'CONFIDENTIAL', '', text, flags=re.IGNORECASE)
+        
+        # Remove bullet point decorations but keep content
+        text = re.sub(r'•\s*', '- ', text)
+        text = re.sub(r'★\s*', '- ', text)
+        text = re.sub(r'✓\s*', '- ', text)
+        
+        # Fix common OCR errors
+        corrections = {
+            "0ption": "Option",
+            "decisíon": "decision",
+            "actíon": "action",
+            "revíew": "review",
+        }
+        
+        for error, correction in corrections.items():
+            text = text.replace(error, correction)
+            
+        return text.strip()
+
+=== End of ./core/pipeline/cleaning/recap.py ===
 
 
 === File: ./core/pipeline/ingestion/base.py ===
@@ -1087,14 +1720,222 @@ class ContractIngestor(IngestorABC):
 === End of ./core/pipeline/ingestion/contract.py ===
 
 
+=== File: ./core/pipeline/ingestion/deal.py ===
+# clm_system/core/pipeline/ingestion/deal.py
+import uuid
+from datetime import datetime
+from .base import IngestorABC
+
+class DealIngestor(IngestorABC):
+    def ingest(self, raw: dict) -> dict:
+        """
+        Process raw oil industry deal data into a standardized format.
+        
+        Args:
+            raw: Raw deal data from input source
+            
+        Returns:
+            Standardized deal document with metadata
+        """
+        data = raw.copy()
+        
+        # Ensure required fields
+        data.setdefault("id", str(uuid.uuid4()))
+        now = datetime.utcnow()
+        data.setdefault("created_at", now)
+        data.setdefault("updated_at", now)
+        
+        # Ensure deal-specific metadata
+        if "metadata" not in data:
+            data["metadata"] = {}
+            
+        # Set document type if not present
+        data["metadata"].setdefault("document_type", "deal")
+        
+        # Ensure deal-specific fields
+        data["metadata"].setdefault("deal_type", data.get("deal_type", "unspecified"))
+        data["metadata"].setdefault("volume", data.get("volume"))
+        data["metadata"].setdefault("price_per_unit", data.get("price_per_unit"))
+        data["metadata"].setdefault("total_value", data.get("total_value"))
+        data["metadata"].setdefault("location", data.get("location"))
+        data["metadata"].setdefault("counterparties", data.get("counterparties", []))
+        
+        return data
+
+=== End of ./core/pipeline/ingestion/deal.py ===
+
+
+=== File: ./core/pipeline/ingestion/email.py ===
+# clm_system/core/pipeline/ingestion/email.py
+import uuid
+from datetime import datetime
+from email.utils import parsedate_to_datetime
+from .base import IngestorABC
+
+class EmailIngestor(IngestorABC):
+    def ingest(self, raw: dict) -> dict:
+        """
+        Process raw email data into a standardized format.
+        
+        Args:
+            raw: Raw email data from input source
+            
+        Returns:
+            Standardized email document with metadata
+        """
+        data = raw.copy()
+        
+        # Ensure required fields
+        data.setdefault("id", str(uuid.uuid4()))
+        now = datetime.utcnow()
+        data.setdefault("created_at", now)
+        data.setdefault("updated_at", now)
+        
+        # Set title to email subject if not specified
+        if "subject" in data and "title" not in data:
+            data["title"] = data["subject"]
+        
+        # Ensure metadata exists
+        if "metadata" not in data:
+            data["metadata"] = {}
+        
+        # Set document type
+        data["metadata"]["document_type"] = "email"
+        
+        # Extract and normalize email metadata
+        data["metadata"].setdefault("from", data.get("from"))
+        data["metadata"].setdefault("to", data.get("to", []))
+        data["metadata"].setdefault("cc", data.get("cc", []))
+        data["metadata"].setdefault("bcc", data.get("bcc", []))
+        
+        # Parse email date if present
+        if "date" in data and isinstance(data["date"], str):
+            try:
+                parsed_date = parsedate_to_datetime(data["date"])
+                data["metadata"]["email_date"] = parsed_date
+            except Exception:
+                # If parsing fails, use ingestion date
+                data["metadata"]["email_date"] = now
+        
+        # Handle email body
+        if "body" in data:
+            # Store original body in metadata
+            data["metadata"]["original_format"] = "text" if isinstance(data["body"], str) else "html"
+            
+            # Convert body to clauses
+            if "clauses" not in data:
+                data["clauses"] = [{
+                    "id": f"{data['id']}_body",
+                    "type": "email_body",
+                    "text": data["body"],
+                    "position": 0
+                }]
+            
+            # Remove body from top level after storing in clauses
+            data.pop("body", None)
+            
+        # Handle attachments metadata
+        if "attachments" in data:
+            data["metadata"]["has_attachments"] = True
+            data["metadata"]["attachment_count"] = len(data["attachments"])
+            data["metadata"]["attachment_names"] = [
+                att.get("filename", f"attachment_{i}") 
+                for i, att in enumerate(data["attachments"])
+            ]
+            # Remove attachments from top level
+            data.pop("attachments", None)
+        else:
+            data["metadata"]["has_attachments"] = False
+            
+        return data
+
+=== End of ./core/pipeline/ingestion/email.py ===
+
+
+=== File: ./core/pipeline/ingestion/recap.py ===
+# clm_system/core/pipeline/ingestion/recap.py
+import uuid
+from datetime import datetime
+from .base import IngestorABC
+
+class RecapIngestor(IngestorABC):
+    def ingest(self, raw: dict) -> dict:
+        """
+        Process raw recap/summary data into a standardized format.
+        
+        Args:
+            raw: Raw recap data from input source
+            
+        Returns:
+            Standardized recap document with metadata
+        """
+        data = raw.copy()
+        
+        # Ensure required fields
+        data.setdefault("id", str(uuid.uuid4()))
+        now = datetime.utcnow()
+        data.setdefault("created_at", now)
+        data.setdefault("updated_at", now)
+        
+        # Ensure metadata exists
+        if "metadata" not in data:
+            data["metadata"] = {}
+            
+        # Set document type
+        data["metadata"]["document_type"] = "recap"
+        
+        # Extract recap-specific metadata
+        data["metadata"].setdefault("recap_type", data.get("recap_type", "general"))
+        data["metadata"].setdefault("meeting_date", data.get("meeting_date"))
+        data["metadata"].setdefault("author", data.get("author"))
+        data["metadata"].setdefault("participants", data.get("participants", []))
+        data["metadata"].setdefault("related_documents", data.get("related_documents", []))
+        
+        # Handle content sections
+        if "sections" in data and isinstance(data["sections"], list):
+            # Convert sections to clauses if not already present
+            if "clauses" not in data:
+                data["clauses"] = []
+                for i, section in enumerate(data["sections"]):
+                    if isinstance(section, dict):
+                        data["clauses"].append({
+                            "id": f"{data['id']}_section_{i}",
+                            "title": section.get("heading", f"Section {i+1}"),
+                            "type": section.get("type", "recap_section"),
+                            "text": section.get("content", ""),
+                            "position": i,
+                            "metadata": {
+                                "section_type": section.get("type", "general")
+                            }
+                        })
+            # Remove sections from top level after storing in clauses
+            data.pop("sections", None)
+            
+        return data
+
+=== End of ./core/pipeline/ingestion/recap.py ===
+
+
 === File: ./core/pipeline/orchestrator.py ===
 # clm_system/core/pipeline/orchestrator.py
 import asyncio
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, List, Tuple, Optional
+
 from clm_system.core.pipeline.ingestion.contract import ContractIngestor
+from clm_system.core.pipeline.ingestion.deal import DealIngestor
+from clm_system.core.pipeline.ingestion.email import EmailIngestor
+from clm_system.core.pipeline.ingestion.recap import RecapIngestor
+
 from clm_system.core.pipeline.cleaning.contract import ContractCleaner
+from clm_system.core.pipeline.cleaning.deal import DealCleaner
+from clm_system.core.pipeline.cleaning.email import EmailCleaner
+from clm_system.core.pipeline.cleaning.recap import RecapCleaner
+
 from clm_system.core.pipeline.chunking.contract import ContractChunker
+from clm_system.core.pipeline.chunking.deal import DealChunker
+from clm_system.core.pipeline.chunking.email import EmailChunker
+
 from clm_system.core.database.mongodb_client import MongoDBClient
 from clm_system.core.database.elasticsearch_client import ElasticsearchClient
 from clm_system.core.database.qdrant_client import QdrantClient
@@ -1104,50 +1945,246 @@ logger = logging.getLogger(__name__)
 
 class PipelineService:
     def __init__(self):
-        self.ingestor = ContractIngestor()
-        self.cleaner  = ContractCleaner()
-        self.chunker  = ContractChunker()
-        self.mongo    = MongoDBClient()
-        self.es       = ElasticsearchClient()
-        self.qdrant   = QdrantClient()
-        self.model    = get_embedding_model()
-
-    async def process_contract(self, raw: Dict[str,Any]) -> Dict[str,Any]:
-        # 1) Ingest
-        normalized = self.ingestor.ingest(raw)
-        # 2) Clean
-        cleaned    = self.cleaner.clean(normalized)
-        # 3) Chunk & embed
-        chunks = []
-        for clause in cleaned.get("clauses", []):
-            for text in self.chunker.chunk(clause["text"]):
-                emb = compute_embedding(text, self.model)
-                chunks.append((clause, text, emb))
-        # 4) Persist
-        await self.mongo.insert_contract(cleaned)
-        # prepare ES doc (convert dates → ISO, strip _id)
-        es_doc = cleaned.copy()
-        es_doc.pop("_id", None)
-        await self.es.index_contract(es_doc)
-        # 5) Store embeddings
-        for clause, text, emb in chunks:
-            await self.qdrant.store_embedding(
-                contract_id   = cleaned["id"],
-                contract_title= cleaned["title"],
-                clause_id     = clause["id"],
-                clause_type   = clause["type"],
-                content       = text,
-                metadata      = {**cleaned["metadata"], **clause.get("metadata",{})},
-                embedding     = emb
-            )
-        logger.info(f"Pipeline complete for contract {cleaned['id']}")
-        return {
-            "id": cleaned["id"],
-            "title": cleaned["title"],
-            "clauses_count": len(cleaned.get("clauses",[])),
-            "status": "indexed"
+        # Document type registry with processing components
+        self.ingestors = {
+            "contract": ContractIngestor(),
+            "deal": DealIngestor(),
+            "email": EmailIngestor(),
+            "recap": RecapIngestor(),
         }
+        
+        self.cleaners = {
+            "contract": ContractCleaner(),
+            "deal": DealCleaner(),
+            "email": EmailCleaner(),
+            "recap": RecapCleaner(),
+        }
+        
+        # Note: No RecapChunker since recaps are a component of deals
+        self.chunkers = {
+            "contract": ContractChunker(),
+            "deal": DealChunker(),
+            "email": EmailChunker(),
+        }
+        
+        # Initialize database connections
+        self.mongo = MongoDBClient()
+        self.es = ElasticsearchClient()
+        self.qdrant = QdrantClient()
+        
+        # Load embedding model
+        self.embedding_model = get_embedding_model()
 
+    async def process_document(self, raw: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Main pipeline execution flow:
+        1. Determine document type from metadata
+        2. Run through type-specific processing components
+        3. Store in databases and vector store
+        4. Return processing results
+        """
+        try:
+            # Determine document type (default to contract if missing)
+            doc_type = raw.get("metadata", {}).get("document_type", "contract")
+            
+            # Validate document type
+            if doc_type not in self.ingestors:
+                raise ValueError(f"Unsupported document type: {doc_type}")
+            
+            # Get processing components
+            ingestor = self.ingestors[doc_type]
+            cleaner = self.cleaners[doc_type]
+            
+            # Pipeline execution - steps 1 & 2
+            normalized = ingestor.ingest(raw)      # Structure raw data
+            cleaned = cleaner.clean(normalized)    # Sanitize and normalize
+            
+            # Special handling for recaps - don't chunk them
+            if doc_type == "recap":
+                # Store recaps without chunking
+                await self._persist_document(cleaned)
+                
+                logger.info(f"Pipeline complete for recap {cleaned['id']}")
+                return {
+                    "id": cleaned["id"],
+                    "title": cleaned.get("title", "Untitled Recap"),
+                    "status": "indexed",
+                    "document_type": doc_type
+                }
+            else:
+                # For other document types, proceed with chunking
+                chunker = self.chunkers[doc_type]
+                
+                # Step 3: Chunk & embed based on document type structure
+                chunks = self._generate_chunks_for_type(cleaned, chunker, doc_type)
+                
+                # Step 4: Persist in MongoDB and Elasticsearch
+                await self._persist_document(cleaned)
+                
+                # Step 5: Store embeddings in Qdrant if there are chunks
+                if chunks:
+                    await self._store_embeddings(cleaned, chunks, doc_type)
+                
+                logger.info(f"Pipeline complete for {doc_type} {cleaned['id']}")
+                
+                # Return appropriate result based on document type
+                result = {
+                    "id": cleaned["id"],
+                    "title": cleaned.get("title", f"Untitled {doc_type.title()}"),
+                    "status": "indexed",
+                    "document_type": doc_type
+                }
+                
+                # Add type-specific fields
+                if doc_type == "contract" and "clauses" in cleaned:
+                    result["clauses_count"] = len(cleaned["clauses"])
+                elif doc_type == "email":
+                    if "metadata" in cleaned and "has_attachments" in cleaned["metadata"]:
+                        result["has_attachments"] = cleaned["metadata"]["has_attachments"]
+                elif doc_type == "deal":
+                    if "metadata" in cleaned and "deal_type" in cleaned["metadata"]:
+                        result["deal_type"] = cleaned["metadata"]["deal_type"]
+                
+                return result
+            
+        except Exception as e:
+            logger.error(f"Document processing failed: {str(e)}")
+            raise
+        finally:
+            await self._cleanup_connections()
+
+    async def _cleanup_connections(self):
+        """Clean up all database connections"""
+        if hasattr(self.mongo, 'client'):
+            self.mongo.client.close()
+        if hasattr(self.es, 'client'):
+            await self.es.client.close()
+        if hasattr(self.qdrant, 'client'):
+            await self.qdrant.client.close()
+    def _generate_chunks_for_type(self, 
+                                  document: Dict[str, Any], 
+                                  chunker: Any, 
+                                  doc_type: str) -> List[Tuple[Dict[str, Any], str, List[float]]]:
+        """Generate chunks based on document type structure"""
+        chunks = []
+        
+        if doc_type == "contract":
+            # Contracts have clauses
+            for clause in document.get("clauses", []):
+                for text in chunker.chunk(clause["text"]):
+                    emb = compute_embedding(text, self.embedding_model)
+                    chunks.append((clause, text, emb))
+                    
+        elif doc_type == "email":
+            # Emails may have a body or content field instead of clauses
+            if "body" in document:
+                # Email with direct body field
+                for text in chunker.chunk(document["body"]):
+                    emb = compute_embedding(text, self.embedding_model)
+                    # Create a pseudo-clause for consistent handling
+                    pseudo_clause = {
+                        "id": f"{document['id']}_body",
+                        "type": "email_body",
+                        "metadata": {}
+                    }
+                    chunks.append((pseudo_clause, text, emb))
+            elif "content" in document:
+                # Email with content field
+                for text in chunker.chunk(document["content"]):
+                    emb = compute_embedding(text, self.embedding_model)
+                    pseudo_clause = {
+                        "id": f"{document['id']}_content",
+                        "type": "email_content",
+                        "metadata": {}
+                    }
+                    chunks.append((pseudo_clause, text, emb))
+            elif "clauses" in document:
+                # Email already processed into clauses
+                for clause in document["clauses"]:
+                    for text in chunker.chunk(clause["text"]):
+                        emb = compute_embedding(text, self.embedding_model)
+                        chunks.append((clause, text, emb))
+                        
+        elif doc_type == "deal":
+            # Deals may have sections or clauses
+            if "sections" in document:
+                for i, section in enumerate(document["sections"]):
+                    if isinstance(section, dict) and "content" in section:
+                        for text in chunker.chunk(section["content"]):
+                            emb = compute_embedding(text, self.embedding_model)
+                            pseudo_clause = {
+                                "id": f"{document['id']}_section_{i}",
+                                "type": section.get("type", "deal_section"),
+                                "metadata": {
+                                    "section_title": section.get("title", f"Section {i+1}")
+                                }
+                            }
+                            chunks.append((pseudo_clause, text, emb))
+            elif "clauses" in document:
+                # Deal already processed into clauses
+                for clause in document["clauses"]:
+                    for text in chunker.chunk(clause["text"]):
+                        emb = compute_embedding(text, self.embedding_model)
+                        chunks.append((clause, text, emb))
+            elif "terms" in document and isinstance(document["terms"], list):
+                # Deal with terms structure
+                for i, term in enumerate(document["terms"]):
+                    if isinstance(term, dict) and "description" in term:
+                        for text in chunker.chunk(term["description"]):
+                            emb = compute_embedding(text, self.embedding_model)
+                            pseudo_clause = {
+                                "id": f"{document['id']}_term_{i}",
+                                "type": "deal_term",
+                                "metadata": {
+                                    "term_name": term.get("name", f"Term {i+1}")
+                                }
+                            }
+                            chunks.append((pseudo_clause, text, emb))
+                            
+        return chunks
+    
+    async def _persist_document(self, document: Dict[str, Any]):
+        """Store document in MongoDB and Elasticsearch"""
+        # MongoDB - main document storage
+        # Ensure async connections
+        await self.mongo.client.admin.command('ping')
+        await self.es.client.info()
+        
+        # MongoDB - main document storage
+        inserted_id = await self.mongo.insert_contract(document)
+        logger.debug("Inserted MongoDB ID: %s", inserted_id)
+        
+        # Elasticsearch - searchable content
+        es_doc = document.copy()
+        es_doc.pop("_id", None)
+        es_response = await self.es.index_contract(es_doc)
+        logger.debug("ES response: %s", es_response)
+        
+    async def _store_embeddings(self, 
+                               document: Dict[str, Any], 
+                               chunks: List[Tuple[Dict[str, Any], str, List[float]]], 
+                               doc_type: str):
+        """Store embeddings in vector database"""
+        for clause, text, emb in chunks:
+            # Get metadata from the document and clause
+            doc_metadata = document.get("metadata", {})
+            clause_metadata = clause.get("metadata", {})
+            
+            # Combine metadata, with clause metadata taking precedence
+            combined_metadata = {**doc_metadata, **clause_metadata}
+            
+            # Add document type to metadata
+            combined_metadata["document_type"] = doc_type
+            
+            await self.qdrant.store_embedding(
+                contract_id=document["id"],
+                contract_title=document.get("title", f"Untitled {doc_type.title()}"),
+                clause_id=clause["id"],
+                clause_type=clause.get("type", "generic"),
+                content=text,
+                metadata=combined_metadata,
+                embedding=emb
+            )
 
 === End of ./core/pipeline/orchestrator.py ===
 
@@ -1181,9 +2218,10 @@ class PDFProcessor:
         try:
             # Extract text from PDF
             text = await self._extract_text(file_path)
-            
+            logger.debug(f"Extracted raw text:\n{text[:1000]}...")  # First 1000 chars
             # Process the text into contract structure
             contract = await self._structure_contract(text, file_path)
+            logger.debug("Structured contract:", contract)
             
             return contract
         except Exception as e:
@@ -1191,12 +2229,16 @@ class PDFProcessor:
             raise
     
     async def _extract_text(self, file_path: str) -> str:
-        """Extract text from PDF."""
+        """Extract and normalize text from PDF."""
         text = ""
         try:
             doc = fitz.open(file_path)
             for page in doc:
-                text += page.get_text()
+                text += page.get_text("text", flags=fitz.TEXT_PRESERVE_LIGATURES)
+            
+            # Normalize text
+            text = re.sub(r'\s+', ' ', text)  # Replace multiple whitespace
+            text = re.sub(r'(\w)-\n(\w)', r'\1\2', text)  # Fix hyphenated words
             return text
         except Exception as e:
             logger.error(f"Error extracting text from PDF: {e}")
@@ -1213,7 +2255,7 @@ class PDFProcessor:
             "metadata": self._extract_metadata(text),
             "clauses": self._extract_clauses(text)
         }
-        
+        logger.debug(f"Structured contract: {contract}")
         return contract
     
     def _extract_title(self, text: str, file_name: str) -> str:
@@ -1286,79 +2328,104 @@ class PDFProcessor:
         
         return parties
     
+    from dateutil import parser  # Add this import
+
     def _extract_dates(self, text: str) -> Dict[str, str]:
-        """Extract key dates from contract."""
         dates = {}
         
-        # Date patterns (simplified - would need more robust implementation)
-        effective_date_pattern = r'effective\s+date.*?(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}|\w+\s+\d{1,2},?\s+\d{4})'
-        expiration_date_pattern = r'(?:expiration|termination|end)\s+date.*?(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}|\w+\s+\d{1,2},?\s+\d{4})'
-        
-        effective_match = re.search(effective_date_pattern, text, re.IGNORECASE)
-        if effective_match:
-            # Would need date parsing/normalization in production
-            dates["effective_date"] = effective_match.group(1)
-            
-        expiration_match = re.search(expiration_date_pattern, text, re.IGNORECASE)
-        if expiration_match:
-            dates["expiration_date"] = expiration_match.group(1)
-            
+        # Existing regex patterns
+        effective_match = re.search(r'effective\s+date.*?(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})', text, re.IGNORECASE)
+        expiration_match = re.search(r'(?:expiration|termination|end)\s+date.*?(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})', text, re.IGNORECASE)
+
+        # Parse dates with flexible format handling
+        try:
+            if effective_match:
+                dates["effective_date"] = parser.parse(effective_match.group(1)).isoformat()
+        except:
+            logger.warning(f"Could not parse effective date: {effective_match.group(1)}")
+
+        try:
+            if expiration_match:
+                dates["expiration_date"] = parser.parse(expiration_match.group(1)).isoformat()
+        except:
+            logger.warning(f"Could not parse expiration date: {expiration_match.group(1)}")
+
         return dates
     
     def _extract_clauses(self, text: str) -> List[Dict[str, Any]]:
         """Extract clauses from contract text."""
         clauses = []
+        logger.debug(f"Raw text for clause extraction:\n{text[:2000]}...")  # First 2000 chars
         
-        # Split text into possible clauses (simplified)
-        # In production, would need more sophisticated section detection
-        section_pattern = r'(?:\n|\r\n)(\d+\.?\s+[A-Z][^\.]+)\.?(?:\n|\r\n)'
-        sections = re.split(section_pattern, text)
+        # Enhanced section pattern with multiple variations
+        section_pattern = r'''
+            (?:\n|\r\n)  # Section starts with newline
+            (?:          # Section number formats:
+            (?:\d+[\.\)]?|          # 1, 2., 3)
+            [A-Z][\.\)]|           # A., B)
+            ARTICLE\s+[IVXLCDM]+|  # ARTICLE I
+            SECTION\s+[\dA-Z]+|    # SECTION 1, SECTION A
+            Clause\s+\d+|          # Clause 1
+            §\s?[\dA-Z]+|          # §1, §A
+            [IVXLCDM]+[\.\)]       # I., II)
+            )
+            )
+            \s+          # Whitespace after number
+            ([A-Z][^\.:\n]{5,})  # Title (capitalized, min 5 chars)
+            [\.:]?       # Optional ending punctuation
+            (?=\n|\r\n|$)  # Lookahead for newline or end
+        '''
+        
+        sections = re.split(section_pattern, text, flags=re.IGNORECASE|re.VERBOSE)
+        
+        # Debug found sections
+        logger.debug(f"Split sections: {sections[:10]}")  # First 10 sections
         
         position = 1
-        for i in range(1, len(sections), 2):
-            if i < len(sections):
-                title = sections[i].strip()
-                content = sections[i+1].strip() if i+1 < len(sections) else ""
+        for i in range(1, len(sections)-1, 2):
+            title = sections[i].strip()
+            content = sections[i+1].strip()
+            
+            if len(content) > 50:  # Increased minimum content length
+                clause_type = self._identify_clause_type(title, content)
+                clauses.append({
+                    "id": f"clause-{position:03d}",
+                    "title": title,
+                    "type": clause_type,
+                    "text": content,
+                    "position": position
+                })
+                position += 1
                 
-                if title and content:
-                    clause_type = self._identify_clause_type(title, content)
-                    clauses.append({
-                        "id": f"clause-{position:03d}",
-                        "title": title,
-                        "type": clause_type,
-                        "text": content,
-                        "position": position
-                    })
-                    position += 1
+        # Fallback: Split by paragraph if no sections found
+        if not clauses:
+            logger.warning("No sections found, falling back to paragraph split")
+            paragraphs = [p.strip() for p in re.split(r'\n{2,}', text) if len(p.strip()) > 100]
+            for i, para in enumerate(paragraphs):
+                clauses.append({
+                    "id": f"para-{i+1:03d}",
+                    "title": f"Paragraph {i+1}",
+                    "type": "uncategorized",
+                    "text": para,
+                    "position": i+1
+                })
         
-        return clauses
-    
-    def _identify_clause_type(self, title: str, content: str) -> str:
-        """Identify clause type from title and content."""
-        # Simple mapping of common clause types
-        type_patterns = {
-            "term": r'term|duration|period',
-            "payment": r'payment|fee|compensation|price',
-            "termination": r'terminat|cancel|end',
-            "confidentiality": r'confidential|secret|disclosure',
-            "liability": r'liab|indemnif|harmless',
-            "warranty": r'warrant|guarantee',
-            "grant": r'grant|licens|right',
-            "governing_law": r'governing law|jurisdiction|venue'
-        }
-        
-        combined_text = (title + " " + content[:200]).lower()
-        
-        for clause_type, pattern in type_patterns.items():
-            if re.search(pattern, combined_text):
-                return clause_type
+        logger.debug(f"Found {len(clauses)} clauses: {clauses}")
+        logger.debug(f"Pre-filtered clauses: {len(clauses)} items")
+        valid_clauses = [c for c in clauses if c.get("text")]
+        logger.debug(f"Post-filtered clauses: {len(valid_clauses)} items")
                 
-        return "other"
+        return [
+        clause for clause in clauses
+        if clause.get("text") and len(clause["text"]) > 50
+    ]
 
 === End of ./core/pipeline/preprocessing/pdf_processor.py ===
 
 
 === File: ./core/query_engine/helpers.py ===
+from typing import List, Dict 
+
 def reciprocal_rank_fusion(
     results_a: List[Dict],
     results_b: List[Dict],
@@ -1436,7 +2503,11 @@ logger = logging.getLogger(__name__)
 
 class QueryClassifier:
     def __init__(self):
-        self.client = AsyncOpenAI(api_key=settings.openai_api_key)
+        #self.client = AsyncOpenAI(api_key=settings.openai_api_key)
+        self.client = AsyncOpenAI(
+            base_url="http://localhost:1234/v1",  # Default LM Studio port
+            api_key="deepseek-r1-distill-qwen-7b"  # Dummy key required by client
+        )
         self.cache = {}  # Simple cache for demo purposes
         self.cache_ttl = 3600  # 1 hour TTL
         self.cache_timestamps = {}
@@ -1457,7 +2528,8 @@ class QueryClassifier:
         for attempt in range(max_retries):
             try:
                 response = await self.client.chat.completions.create(
-                    model="gpt-3.5-turbo",
+                    #model="gpt-3.5-turbo",
+                    model="local-model",
                     messages=[{
                         "role": "system",
                         "content": """Classify legal contract search queries. Respond with ONE word:
@@ -1785,93 +2857,6 @@ if __name__ == "__main__":
     )
 
 
-# File: clm_system/core/database/mongodb_client.py
-import logging
-from typing import Dict, List, Any, Optional
-
-from pymongo import MongoClient
-from pymongo.errors import PyMongoError
-
-from clm_system.config import settings
-
-logger = logging.getLogger(__name__)
-
-class MongoDBClient:
-    """Client for interacting with MongoDB."""
-    
-    def __init__(self):
-        self.client = MongoClient(settings.mongodb_uri)
-        self.db = self.client[settings.mongodb_database]
-        self.contracts_collection = self.db["contracts"]
-    
-    async def insert_contract(self, contract: Dict[str, Any]) -> str:
-        """
-        Inserts a contract into the MongoDB collection.
-        
-        Args:
-            contract: Contract data
-            
-        Returns:
-            ID of the inserted contract
-        """
-        try:
-            # Convert datetime to string for MongoDB
-            contract = contract.copy()
-            if "created_at" in contract:
-                contract["created_at"] = contract["created_at"].isoformat()
-            if "updated_at" in contract:
-                contract["updated_at"] = contract["updated_at"].isoformat()
-                
-            result = self.contracts_collection.insert_one(contract)
-            return str(result.inserted_id)
-        except PyMongoError as e:
-            logger.error(f"MongoDB insert error: {str(e)}")
-            raise
-        
-    async def get_contract(self, contract_id: str) -> Optional[Dict[str, Any]]:
-        """
-        Retrieves a contract by ID.
-        
-        Args:
-            contract_id: ID of the contract to retrieve
-            
-        Returns:
-            Contract data or None if not found
-        """
-        try:
-            contract = self.contracts_collection.find_one({"id": contract_id})
-            return contract
-        except PyMongoError as e:
-            logger.error(f"MongoDB get error: {str(e)}")
-            raise
-    
-    async def get_contracts(
-        self, filters: Optional[Dict[str, Any]] = None, limit: int = 100, skip: int = 0
-    ) -> List[Dict[str, Any]]:
-        """
-        Retrieves contracts matching the given filters.
-        
-        Args:
-            filters: Query filters
-            limit: Maximum number of contracts to return
-            skip: Number of contracts to skip
-            
-        Returns:
-            List of contracts
-        """
-        try:
-            query = filters or {}
-            contracts = list(
-                self.contracts_collection
-                .find(query)
-                .limit(limit)
-                .skip(skip)
-            )
-            return contracts
-        except PyMongoError as e:
-            logger.error(f"MongoDB get_contracts error: {str(e)}")
-            raise
-
 
 === End of ./main.py ===
 
@@ -1881,7 +2866,7 @@ class MongoDBClient:
 from pydantic import BaseModel, Field
 from typing import Dict, List, Optional, Any, Union
 from datetime import datetime
-
+from pydantic import validator
 
 class ClauseBase(BaseModel):
     """Base schema for contract clauses."""
@@ -1894,15 +2879,21 @@ class ClauseBase(BaseModel):
 
 
 class ContractMetadata(BaseModel):
-    """Metadata for contracts."""
     contract_type: str
     effective_date: Optional[datetime] = None
     expiration_date: Optional[datetime] = None
     parties: List[Dict[str, str]] = Field(default_factory=list)
     status: Optional[str] = None
-    tags: Optional[List[str]] = Field(default_factory=list)
-    additional_metadata: Optional[Dict[str, Any]] = Field(default_factory=dict)
+    tags: List[str] = Field(default_factory=list)
 
+    @validator('effective_date', 'expiration_date', pre=True)
+    def parse_dates(cls, value):
+        if isinstance(value, str):
+            try:
+                return parser.parse(value)
+            except:
+                return None
+        return value
 
 class ContractCreate(BaseModel):
     """Schema for creating a new contract."""
@@ -1951,12 +2942,6 @@ class QueryResponse(BaseModel):
 
 
 === End of ./schemas/schemas.py ===
-
-
-=== File: ./temp.py ===
-
-
-=== End of ./temp.py ===
 
 
 === File: ./test.py ===

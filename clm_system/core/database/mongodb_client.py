@@ -1,23 +1,19 @@
 
-# File: clm_system/core/database/mongodb_client.py
 import logging
-from typing import Dict, List, Any, Optional
-
+from typing import Any, Dict, List, Optional
 from pymongo import MongoClient
 from pymongo.errors import PyMongoError
-
+from motor.motor_asyncio import AsyncIOMotorClient
 from clm_system.config import settings
 
 logger = logging.getLogger(__name__)
 
 class MongoDBClient:
-    """Client for interacting with MongoDB."""
-    
     def __init__(self):
-        self.client = MongoClient(settings.mongodb_uri)
+        self.client = AsyncIOMotorClient(settings.mongodb_uri)
         self.db = self.client[settings.mongodb_database]
-        self.contracts_collection = self.db["contracts"]
-    
+        self.contracts_collection = self.db.contracts
+       
     async def insert_contract(self, contract: Dict[str, Any]) -> str:
         """
         Inserts a contract into the MongoDB collection.
@@ -36,7 +32,8 @@ class MongoDBClient:
             if "updated_at" in contract:
                 contract["updated_at"] = contract["updated_at"].isoformat()
                 
-            result = self.contracts_collection.insert_one(contract)
+            # Use async insert
+            result = await self.contracts_collection.insert_one(contract)
             return str(result.inserted_id)
         except PyMongoError as e:
             logger.error(f"MongoDB insert error: {str(e)}")

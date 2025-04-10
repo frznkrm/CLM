@@ -26,9 +26,10 @@ class PDFProcessor:
         try:
             # Extract text from PDF
             text = await self._extract_text(file_path)
-            
+            logger.debug(f"Extracted raw text:\n{text[:1000]}...")  # First 1000 chars
             # Process the text into contract structure
             contract = await self._structure_contract(text, file_path)
+            logger.debug("Structured contract:", contract)
             
             return contract
         except Exception as e:
@@ -36,12 +37,16 @@ class PDFProcessor:
             raise
     
     async def _extract_text(self, file_path: str) -> str:
-        """Extract text from PDF."""
+        """Extract and normalize text from PDF."""
         text = ""
         try:
             doc = fitz.open(file_path)
             for page in doc:
-                text += page.get_text()
+                text += page.get_text("text", flags=fitz.TEXT_PRESERVE_LIGATURES)
+            
+            # Normalize text
+            text = re.sub(r'\s+', ' ', text)  # Replace multiple whitespace
+            text = re.sub(r'(\w)-\n(\w)', r'\1\2', text)  # Fix hyphenated words
             return text
         except Exception as e:
             logger.error(f"Error extracting text from PDF: {e}")
@@ -58,7 +63,7 @@ class PDFProcessor:
             "metadata": self._extract_metadata(text),
             "clauses": self._extract_clauses(text)
         }
-        
+        logger.debug(f"Structured contract: {contract}")
         return contract
     
     def _extract_title(self, text: str, file_name: str) -> str:
@@ -158,49 +163,67 @@ class PDFProcessor:
     def _extract_clauses(self, text: str) -> List[Dict[str, Any]]:
         """Extract clauses from contract text."""
         clauses = []
+        logger.debug(f"Raw text for clause extraction:\n{text[:2000]}...")  # First 2000 chars
         
-        # Split text into possible clauses (simplified)
-        # In production, would need more sophisticated section detection
-        section_pattern = r'(?:\n|\r\n)(\d+\.?\s+[A-Z][^\.]+)\.?(?:\n|\r\n)'
-        sections = re.split(section_pattern, text)
+        # Enhanced section pattern with multiple variations
+        section_pattern = r'''
+            (?:\n|\r\n)  # Section starts with newline
+            (?:          # Section number formats:
+            (?:\d+[\.\)]?|          # 1, 2., 3)
+            [A-Z][\.\)]|           # A., B)
+            ARTICLE\s+[IVXLCDM]+|  # ARTICLE I
+            SECTION\s+[\dA-Z]+|    # SECTION 1, SECTION A
+            Clause\s+\d+|          # Clause 1
+            §\s?[\dA-Z]+|          # §1, §A
+            [IVXLCDM]+[\.\)]       # I., II)
+            )
+            )
+            \s+          # Whitespace after number
+            ([A-Z][^\.:\n]{5,})  # Title (capitalized, min 5 chars)
+            [\.:]?       # Optional ending punctuation
+            (?=\n|\r\n|$)  # Lookahead for newline or end
+        '''
+        
+        sections = re.split(section_pattern, text, flags=re.IGNORECASE|re.VERBOSE)
+        
+        # Debug found sections
+        logger.debug(f"Split sections: {sections[:10]}")  # First 10 sections
         
         position = 1
-        for i in range(1, len(sections), 2):
-            if i < len(sections):
-                title = sections[i].strip()
-                content = sections[i+1].strip() if i+1 < len(sections) else ""
+        for i in range(1, len(sections)-1, 2):
+            title = sections[i].strip()
+            content = sections[i+1].strip()
+            
+            if len(content) > 50:  # Increased minimum content length
+                clause_type = self._identify_clause_type(title, content)
+                clauses.append({
+                    "id": f"clause-{position:03d}",
+                    "title": title,
+                    "type": clause_type,
+                    "text": content,
+                    "position": position
+                })
+                position += 1
                 
-                if title and content:
-                    clause_type = self._identify_clause_type(title, content)
-                    clauses.append({
-                        "id": f"clause-{position:03d}",
-                        "title": title,
-                        "type": clause_type,
-                        "text": content,
-                        "position": position
-                    })
-                    position += 1
+        # Fallback: Split by paragraph if no sections found
+        if not clauses:
+            logger.warning("No sections found, falling back to paragraph split")
+            paragraphs = [p.strip() for p in re.split(r'\n{2,}', text) if len(p.strip()) > 100]
+            for i, para in enumerate(paragraphs):
+                clauses.append({
+                    "id": f"para-{i+1:03d}",
+                    "title": f"Paragraph {i+1}",
+                    "type": "uncategorized",
+                    "text": para,
+                    "position": i+1
+                })
         
-        return clauses
-    
-    def _identify_clause_type(self, title: str, content: str) -> str:
-        """Identify clause type from title and content."""
-        # Simple mapping of common clause types
-        type_patterns = {
-            "term": r'term|duration|period',
-            "payment": r'payment|fee|compensation|price',
-            "termination": r'terminat|cancel|end',
-            "confidentiality": r'confidential|secret|disclosure',
-            "liability": r'liab|indemnif|harmless',
-            "warranty": r'warrant|guarantee',
-            "grant": r'grant|licens|right',
-            "governing_law": r'governing law|jurisdiction|venue'
-        }
-        
-        combined_text = (title + " " + content[:200]).lower()
-        
-        for clause_type, pattern in type_patterns.items():
-            if re.search(pattern, combined_text):
-                return clause_type
+        logger.debug(f"Found {len(clauses)} clauses: {clauses}")
+        logger.debug(f"Pre-filtered clauses: {len(clauses)} items")
+        valid_clauses = [c for c in clauses if c.get("text")]
+        logger.debug(f"Post-filtered clauses: {len(valid_clauses)} items")
                 
-        return "other"
+        return [
+        clause for clause in clauses
+        if clause.get("text") and len(clause["text"]) > 50
+    ]

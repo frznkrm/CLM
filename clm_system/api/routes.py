@@ -33,7 +33,7 @@ async def ingest_contract(contract: ContractCreate):
         Processed contract information
     """
     try:
-        result = await pipeline.process_contract(contract.dict())
+        result = await pipeline.process_document(contract.dict())
         return result
     except Exception as e:
         logger.error(f"Error ingesting contract: {e}")
@@ -88,7 +88,7 @@ async def ingest_pdf_contract(
             raise HTTPException(status_code=400, detail=f"Invalid contract structure: {ve}")
         
         # Process through pipeline
-        result = await pipeline.process_contract(contract_obj.dict())
+        result = await pipeline.process_document(contract.dict())
         return result
         
     except Exception as e:

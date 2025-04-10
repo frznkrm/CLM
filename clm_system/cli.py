@@ -66,7 +66,7 @@ async def ingest(file_path):
 
     # 3) Run through your pipeline
     try:
-        result = await pipeline.process_contract(contract_obj.dict())
+        result = await pipeline.process_document(contract_obj.dict())
     except Exception as e:
         click.echo(f"Error ingesting contract: {e}", err=True)
         return
@@ -169,7 +169,7 @@ async def ingest_pdf(pdf_path, title=None, contract_type=None, tags=None):
             return
         
         # Process through pipeline
-        result = await pipeline.process_contract(contract_obj.dict())
+        result = await pipeline.process_document(contract_obj.dict())
         
         # Success output
         click.echo(f"PDF contract ingested successfully: {result['id']}")

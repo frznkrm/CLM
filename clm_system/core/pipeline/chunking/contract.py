@@ -1,14 +1,21 @@
 # clm_system/core/pipeline/chunking/contract.py
 from typing import List
+from spacy.lang.en import English
 import spacy
+import logging  # Added import
 from .base import ChunkerABC
 from clm_system.config import settings
 
+logger = logging.getLogger(__name__)  # Added logger definition
+
 class ContractChunker(ChunkerABC):
     def __init__(self):
-        self.nlp = spacy.load("en_core_web_sm")
-        self.nlp.disable_pipes("parser", "ner")  # Keep only tokenizer/sentence boundary detection
+        # Create blank English pipeline with just the sentencizer
+        self.nlp = English()
+        self.nlp.add_pipe("sentencizer")
+        logger.info("SpaCy pipeline components: %s", self.nlp.pipe_names)
 
+    # Rest of the class remains unchanged
     def chunk(self, text: str) -> List[str]:
         doc = self.nlp(text)
         sentences = [sent.text.strip() for sent in doc.sents]
