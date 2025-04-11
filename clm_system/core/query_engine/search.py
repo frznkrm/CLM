@@ -1,4 +1,4 @@
-# File: clm_system/core/queryEngine/search.py
+# File: clm_system/core/query_engine/search.py
 import asyncio
 import logging
 import time
@@ -46,26 +46,77 @@ class QueryRouter:
             top_k = self.top_k
         
         # Determine query type using classifier
-        query_type = await self.classifier.classify(query)
+        classification = await self.classifier.classify(query)
+        query_type = classification.get('query_type', 'semantic')
         logger.info(f"Query classified as {query_type}: {query}")
         
-        results = []
+        # Convert document_type filter to list if needed
+        if filters and 'metadata.document_type' in filters:
+            doc_types = [filters['metadata.document_type']]
+        else:
+            doc_types = classification.get('doc_types', ['contract', 'email', 'recap', 'deal'])
+        
+        # Parallel searches per document type
+        search_tasks = []
+        for doc_type in doc_types:
+            task = self._search_by_type(query, query_type, filters, top_k, doc_type)
+            search_tasks.append(task)
+        
+        # Gather results from all searches
+        type_results = await asyncio.gather(*search_tasks)
+        
+        # Merge results from different document types
+        results = self._merge_results(type_results, top_k)
+        
+        execution_time = (time.time() - start_time) * 1000  # Convert to milliseconds
+        
+        return {
+            "query": query,
+            "total_results": len(results),
+            "results": results,
+            "metadata": {
+                "query_type": query_type,
+                "filters_applied": filters is not None,
+                "document_types": doc_types
+            },
+            "execution_time_ms": execution_time
+        }
+    
+    async def _search_by_type(self, query: str, query_type: str, 
+                             filters: Optional[Dict[str, Any]], 
+                             top_k: int, doc_type: str) -> List[Dict[str, Any]]:
+        """
+        Perform search for a specific document type.
+        
+        Args:
+            query: Search query
+            query_type: Classification of query (structured, semantic, hybrid)
+            filters: Metadata filters
+            top_k: Number of results to return
+            doc_type: Document type to search for
+            
+        Returns:
+            List of search results for this document type
+        """
+        # Add document type to filters
+        type_filters = filters.copy() if filters else {}
+        type_filters["metadata.document_type"] = doc_type
         
         if query_type == "structured":
             # Structured search using Elasticsearch
-            results = await self.es_client.search(query, filters, top_k)
+            results = await self.es_client.search(query, type_filters, top_k)
         elif query_type == "semantic":
             # Semantic search using Qdrant
             query_embedding = compute_embedding(query, self.embedding_model)
-            results = await self.qdrant_client.search(query_embedding, filters, top_k)
+            results = await self.qdrant_client.search(query_embedding, type_filters, top_k)
         else:  # hybrid
             # Compute embedding here before passing to search
             query_embedding = compute_embedding(query, self.embedding_model)
             
             # Run searches in parallel
             es_results, qdrant_results = await asyncio.gather(
-                self.es_client.search(query, filters, top_k * 2),
-                self.qdrant_client.search(query_embedding, filters, top_k * 2)
+                self.es_client.search(query, type_filters, top_k * 2),
+                self.qdrant_client.search(query_embedding, type_filters, top_k * 2)
             )
             
             # Combine results using RRF
@@ -77,46 +128,32 @@ class QueryRouter:
                 weight_b=0.6   # Vector search weight
             )[:top_k]
         
-        execution_time = (time.time() - start_time) * 1000  # Convert to milliseconds
+        # Add document type to results metadata
+        for result in results:
+            if "metadata" not in result:
+                result["metadata"] = {}
+            result["metadata"]["document_type"] = doc_type
         
-        return {
-            "query": query,
-            "total_results": len(results),
-            "results": results,
-            "metadata": {
-                "query_type": query_type,
-                "filters_applied": filters is not None
-            },
-            "execution_time_ms": execution_time
-        }
+        return results
     
-    # This method is no longer needed since we're using the QueryClassifier
-    # It can be removed or kept as a fallback
-    def _heuristic_classify(self, query: str) -> str:
+    def _merge_results(self, type_results: List[List[Dict[str, Any]]], top_k: int) -> List[Dict[str, Any]]:
         """
-        Classifies a query as structured, semantic, or hybrid using heuristics.
-        Used as a fallback when classifier is unavailable.
+        Merge results from different document types, sorting by relevance.
         
         Args:
-            query: The user's search query
+            type_results: List of result lists from different document types
+            top_k: Maximum number of results to return
             
         Returns:
-            String indicating query type: "structured", "semantic", or "hybrid"
+            Combined and sorted list of results
         """
-        structured_keywords = [
-            "date:", "type:", "status:", "party:", "before:", "after:",
-            "contract type", "effective date", "expiration date", "status is"
-        ]
+        # Flatten results from all document types
+        all_results = []
+        for results in type_results:
+            all_results.extend(results)
         
-        has_structured = any(keyword in query.lower() for keyword in structured_keywords)
+        # Sort by relevance score
+        sorted_results = sorted(all_results, key=lambda x: -x["relevance_score"])
         
-        if len(query.split()) <= 3 and not has_structured:
-            return "semantic"
-        
-        if len(query.split()) > 3 and has_structured:
-            return "hybrid"
-        
-        if has_structured:
-            return "structured"
-        
-        return "semantic"
+        # Return top-k
+        return sorted_results[:top_k]

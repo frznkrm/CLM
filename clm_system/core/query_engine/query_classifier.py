@@ -18,63 +18,110 @@ class QueryClassifier:
         self.cache_ttl = 3600  # 1 hour TTL
         self.cache_timestamps = {}
 
-    async def classify(self, query: str) -> str:
+    # Update the query_classifier.py file
+
+    async def classify(self, query: str) -> dict:
+        """
+        Classifies the query type and detects document types mentioned.
+        
+        Returns:
+            Dict with query_type and detected document types
+        """
         # Check cache and TTL
         if query in self.cache:
             timestamp = self.cache_timestamps.get(query, 0)
             if time.time() - timestamp < self.cache_ttl:
                 return self.cache[query]
         
-        # Fallback classification in case API fails
-        fallback = self._heuristic_classify(query)
+        # Basic query type classification
+        query_type = self._heuristic_classify(query)
         
-        max_retries = 3
-        retry_delay = 1.0
+        # Default all document types
+        doc_types = self._detect_document_types(query)
         
-        for attempt in range(max_retries):
-            try:
-                response = await self.client.chat.completions.create(
-                    #model="gpt-3.5-turbo",
-                    model="local-model",
-                    messages=[{
-                        "role": "system",
-                        "content": """Classify legal contract search queries. Respond with ONE word:
-                        - 'structured' for exact filters/terms (e.g., "contracts with effective date after 2023")
-                        - 'semantic' for conceptual/meaning-based (e.g., "liability clauses protecting against data breaches")
-                        - 'hybrid' for mixed queries (e.g., "confidentiality provisions in NDAs signed after January")"""
-                    }, {
-                        "role": "user",
-                        "content": query
-                    }],
-                    temperature=0.1,
-                    max_tokens=10
-                )
+        try:
+            response = await self.client.chat.completions.create(
+                model="local-model",
+                messages=[{
+                    "role": "system",
+                    "content": """Classify legal document search queries. Respond with JSON:
+                    {
+                        "type": "structured|semantic|hybrid",
+                        "doc_types": ["contract", "email", "deal", "recap"]  # Include only relevant types
+                    }
+                    
+                    Detect document types from these patterns:
+                    - Email: 'email', 'inbox', 'attachment', 'sent', 'received', 'message'
+                    - Deal: 'deal', 'volume', 'price', 'barrel', 'lease', 'agreement'
+                    - Recap: 'meeting', 'minutes', 'action items', 'decisions', 'recap'  
+                    - Contract: 'contract', 'clause', 'nda', 'terms', 'provision'
+                    """
+                }, {
+                    "role": "user",
+                    "content": query
+                }],
+                temperature=0.1,
+                max_tokens=100
+            )
 
-                classification = response.choices[0].message.content.lower().strip()
-                valid = {"structured", "semantic", "hybrid"}
-                result = classification if classification in valid else fallback
+            try:
+                # Try to parse as JSON
+                import json
+                result = json.loads(response.choices[0].message.content)
                 
-                # Update cache
-                self.cache[query] = result
-                self.cache_timestamps[query] = time.time()
-                return result
+                if isinstance(result, dict):
+                    if "type" in result:
+                        query_type = result["type"] 
+                    if "doc_types" in result and isinstance(result["doc_types"], list):
+                        doc_types = result["doc_types"]
+            except:
+                # If JSON parsing fails, use fallback
+                pass
+            
+            result = {
+                "query_type": query_type,
+                "doc_types": doc_types
+            }
+            
+            # Update cache
+            self.cache[query] = result
+            self.cache_timestamps[query] = time.time()
+            return result
                 
-            except RateLimitError:
-                logger.warning(f"Rate limit exceeded on attempt {attempt+1}, retrying in {retry_delay}s")
-                await asyncio.sleep(retry_delay)
-                retry_delay *= 2  # Exponential backoff
-                
-            except APIError as e:
-                logger.error(f"OpenAI API error: {str(e)}")
-                return fallback
-                
-            except Exception as e:
-                logger.error(f"Classification failed: {str(e)}")
-                return fallback
+        except Exception as e:
+            logger.error(f"Classification failed: {str(e)}")
+            return {
+                "query_type": query_type,
+                "doc_types": doc_types
+            }
+
+    def _detect_document_types(self, query: str) -> List[str]:
+        """Detect document types mentioned in the query"""
+        query = query.lower()
+        types = []
         
-        # If all retries failed
-        return fallback
-    
+        # Email markers
+        if any(term in query for term in ['email', 'inbox', 'message', 'sent', 'received']):
+            types.append('email')
+            
+        # Deal markers
+        if any(term in query for term in ['deal', 'volume', 'price', 'barrel', 'lease']):
+            types.append('deal')
+            
+        # Recap markers
+        if any(term in query for term in ['meeting', 'minutes', 'recap', 'action item']):
+            types.append('recap')
+            
+        # Contract markers
+        if any(term in query for term in ['contract', 'clause', 'nda', 'agreement', 'provision']):
+            types.append('contract')
+            
+        # Return all types if none detected
+        if not types:
+            return ['contract', 'email', 'deal', 'recap']
+            
+        return types
+
     def _heuristic_classify(self, query: str) -> str:
         """Fallback classification using heuristics."""
         structured_keywords = [

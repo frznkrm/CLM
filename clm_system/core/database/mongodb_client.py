@@ -1,6 +1,7 @@
-
+# clm_system/core/database/mongodb_client.py
 import logging
-from typing import Any, Dict, List, Optional
+from dateutil import parser
+from typing import Any, Dict, List, Optional, Tuple  # Add Tuple to imports
 from pymongo import MongoClient
 from pymongo.errors import PyMongoError
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -12,73 +13,116 @@ class MongoDBClient:
     def __init__(self):
         self.client = AsyncIOMotorClient(settings.mongodb_uri)
         self.db = self.client[settings.mongodb_database]
-        self.contracts_collection = self.db.contracts
-       
-    async def insert_contract(self, contract: Dict[str, Any]) -> str:
+        self.documents_collection = self.db.documents  # Generic collection name
+    
+    async def insert_document(self, document: Dict[str, Any]) -> str:
         """
-        Inserts a contract into the MongoDB collection.
+        Inserts any type of document into MongoDB.
         
         Args:
-            contract: Contract data
+            document: Document data (contract, deal, email, etc.)
             
         Returns:
-            ID of the inserted contract
+            ID of the inserted document
         """
         try:
             # Convert datetime to string for MongoDB
-            contract = contract.copy()
-            if "created_at" in contract:
-                contract["created_at"] = contract["created_at"].isoformat()
-            if "updated_at" in contract:
-                contract["updated_at"] = contract["updated_at"].isoformat()
+            doc = document.copy()
+            self._normalize_datetimes(doc)
+            
+            # Validate required fields
+            if "id" not in doc:
+                raise ValueError("Document must contain an 'id' field")
+            if "metadata" not in doc or "document_type" not in doc["metadata"]:
+                raise ValueError("Document metadata must contain 'document_type'")
                 
-            # Use async insert
-            result = await self.contracts_collection.insert_one(contract)
+            result = await self.documents_collection.insert_one(doc)
             return str(result.inserted_id)
         except PyMongoError as e:
             logger.error(f"MongoDB insert error: {str(e)}")
             raise
         
-    async def get_contract(self, contract_id: str) -> Optional[Dict[str, Any]]:
+    async def get_document(self, document_id: str) -> Optional[Dict[str, Any]]:
         """
-        Retrieves a contract by ID.
+        Retrieves any document by ID.
         
         Args:
-            contract_id: ID of the contract to retrieve
+            document_id: ID of the document to retrieve
             
         Returns:
-            Contract data or None if not found
+            Document data or None if not found
         """
         try:
-            contract = self.contracts_collection.find_one({"id": contract_id})
-            return contract
+            document = await self.documents_collection.find_one({"id": document_id})
+            return self._denormalize_datetimes(document)
         except PyMongoError as e:
             logger.error(f"MongoDB get error: {str(e)}")
             raise
     
-    async def get_contracts(
-        self, filters: Optional[Dict[str, Any]] = None, limit: int = 100, skip: int = 0
-    ) -> List[Dict[str, Any]]:
+    async def get_documents(
+    self,
+    filters: Optional[Dict[str, Any]] = None,
+    limit: int = 100,
+    skip: int = 0,
+    sort: Optional[List[Tuple[str, int]]] = None  # Now properly typed
+) -> List[Dict[str, Any]]:
         """
-        Retrieves contracts matching the given filters.
+        Retrieves documents matching the given filters.
         
         Args:
             filters: Query filters
-            limit: Maximum number of contracts to return
-            skip: Number of contracts to skip
+            limit: Maximum number of documents to return
+            skip: Number of documents to skip
+            sort: List of (field, direction) tuples to sort by
             
         Returns:
-            List of contracts
+            List of documents
         """
         try:
             query = filters or {}
-            contracts = list(
-                self.contracts_collection
-                .find(query)
-                .limit(limit)
-                .skip(skip)
-            )
-            return contracts
+            cursor = self.documents_collection.find(query)
+            
+            if sort:
+                cursor = cursor.sort(sort)
+                
+            documents = await cursor.skip(skip).limit(limit).to_list(length=None)
+            return [self._denormalize_datetimes(doc) for doc in documents]
         except PyMongoError as e:
-            logger.error(f"MongoDB get_contracts error: {str(e)}")
+            logger.error(f"MongoDB get_documents error: {str(e)}")
             raise
+    def _normalize_datetimes(self, document: Dict[str, Any]):
+        """No longer convert datetime fields to strings"""
+        pass
+
+    def _denormalize_datetimes(self, document: Optional[Dict[str, Any]]):
+        """No longer needed as dates are stored as Date objects"""
+        return document
+
+    # def _normalize_datetimes(self, document: Dict[str, Any]):
+    #     """Convert datetime fields to ISO strings for MongoDB storage"""
+    #     for field in ['created_at', 'updated_at']:
+    #         if field in document:
+    #             document[field] = document[field].isoformat()
+                
+    #     # Handle metadata dates
+    #     if 'metadata' in document:
+    #         for dt_field in ['effective_date', 'expiration_date', 'sent_date', 'meeting_date']:
+    #             if dt_field in document['metadata'] and document['metadata'][dt_field] is not None:
+    #                 document['metadata'][dt_field] = document['metadata'][dt_field].isoformat()
+
+    # def _denormalize_datetimes(self, document: Optional[Dict[str, Any]]):
+    #     """Convert ISO strings back to datetime objects"""
+    #     if not document:
+    #         return None
+            
+    #     for field in ['created_at', 'updated_at']:
+    #         if field in document:
+    #             document[field] = parser.isoparse(document[field])
+                
+    #     # Handle metadata dates
+    #     if 'metadata' in document:
+    #         for dt_field in ['effective_date', 'expiration_date', 'sent_date', 'meeting_date']:
+    #             if dt_field in document['metadata'] and isinstance(document['metadata'][dt_field], str):
+    #                 document['metadata'][dt_field] = parser.isoparse(document['metadata'][dt_field])
+                    
+    #     return document

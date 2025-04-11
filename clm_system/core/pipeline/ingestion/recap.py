@@ -1,10 +1,10 @@
 # clm_system/core/pipeline/ingestion/recap.py
 import uuid
 from datetime import datetime
-from .base import IngestorABC
+from ..base import BaseIngestor
 
-class RecapIngestor(IngestorABC):
-    def ingest(self, raw: dict) -> dict:
+class RecapIngestor(BaseIngestor, doc_type="recap"):
+    def process(self, raw: dict) -> dict:
         """
         Process raw recap/summary data into a standardized format.
         

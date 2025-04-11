@@ -205,7 +205,7 @@ import click
 from dotenv import load_dotenv
 from pydantic import ValidationError
 
-from clm_system.schemas.schemas import ContractCreate
+from clm_system.schemas.schemas import ContractCreate, EmailCreate, DealCreate, RecapCreate
 from clm_system.core.pipeline.orchestrator import PipelineService
 from clm_system.core.query_engine.search import QueryRouter
 from clm_system.core.utils.embeddings import get_embedding_model, compute_embedding
@@ -231,6 +231,50 @@ def async_command(func):
         return asyncio.run(func(*args, **kwargs))
     return wrapper
 
+def load_file(file_path):
+    """Load content from a file."""
+    try:
+        return json.load(open(file_path, 'r'))
+    except Exception as e:
+        click.echo(f"Failed to read file {file_path}: {e}", err=True)
+        return None
+
+def detect_document_type(file_path):
+    """Detect document type from file extension or content."""
+    # Simple extension-based detection for demo
+    if file_path.lower().endswith('.contract.json'):
+        return 'contract'
+    elif file_path.lower().endswith('.email.json'):
+        return 'email'
+    elif file_path.lower().endswith('.deal.json'):
+        return 'deal'
+    elif file_path.lower().endswith('.recap.json'):
+        return 'recap'
+    else:
+        # Default to contract for now
+        return 'contract'
+
+def handle_validation_error(error):
+    """Handle and display validation errors."""
+    click.echo("Invalid document JSON:", err=True)
+    click.echo(error.json(), err=True)
+
+def show_ingestion_result(doc_type, result):
+    """Display ingestion result based on document type."""
+    click.echo(f"{doc_type.capitalize()} ingested successfully: {result['id']}")
+    click.echo(f"Title: {result['title']}")
+    
+    if doc_type == 'contract' and 'clauses_count' in result:
+        click.echo(f"Clauses: {result['clauses_count']}")
+    elif doc_type == 'email' and 'has_attachments' in result:
+        click.echo(f"Has attachments: {result['has_attachments']}")
+    elif doc_type == 'deal' and 'deal_type' in result:
+        click.echo(f"Deal type: {result['deal_type']}")
+    elif doc_type == 'recap' and 'participants' in result:
+        click.echo(f"Participants: {len(result.get('participants', []))}")
+        
+    click.echo(f"Status: {result['status']}")
+
 @click.group()
 def cli():
     """CLM Smart Search System CLI"""
@@ -238,50 +282,55 @@ def cli():
 
 @cli.command()
 @click.argument('file_path', type=click.Path(exists=True))
+@click.option('--type', '-t', type=click.Choice(['contract', 'email', 'recap', 'deal']),
+              help='Explicit document type')
 @async_command
-async def ingest(file_path):
-    """Ingest a contract JSON file into the system."""
-    # 1) Load raw JSON
-    try:
-        raw = json.load(open(file_path, 'r'))
-    except Exception as e:
-        click.echo(f"Failed to read file {file_path}: {e}", err=True)
+async def ingest(file_path, type):
+    """Ingest any supported document type into the system."""
+    raw = load_file(file_path)
+    if not raw:
         return
-
-    # 2) Validate & coerce with Pydantic
+    
+    # Map file extensions to types if not specified
+    if not type:
+        type = detect_document_type(file_path)
+        
     try:
-        contract_obj = ContractCreate.parse_obj(raw)
-    except ValidationError as ve:
-        click.echo("Invalid contract JSON:", err=True)
-        click.echo(ve.json(), err=True)
-        return
-
-    # 3) Run through your pipeline
-    try:
-        result = await pipeline.process_document(contract_obj.dict())
-    except Exception as e:
-        click.echo(f"Error ingesting contract: {e}", err=True)
-        return
-
-    # 4) Success output
-    click.echo(f"Contract ingested successfully: {result['id']}")
-    click.echo(f"Title: {result['title']}")
-    click.echo(f"Clauses: {result['clauses_count']}")
-    click.echo(f"Status: {result['status']}")
+        # Validate against appropriate schema
+        if type == 'contract':
+            doc = ContractCreate.parse_obj(raw)
+        elif type == 'email':
+            doc = EmailCreate.parse_obj(raw)
+        elif type == 'recap':
+            doc = RecapCreate.parse_obj(raw)
+        elif type == 'deal':
+            doc = DealCreate.parse_obj(raw)
+            
+        result = await pipeline.process_document(doc.dict())
+        show_ingestion_result(type, result)
+        
+    except ValidationError as e:
+        handle_validation_error(e)
 
 @cli.command()
 @click.argument('query')
 @click.option('--filters', '-f', help='JSON string with filters')
+@click.option('--type', '-t', type=click.Choice(['contract', 'email', 'recap', 'deal']),
+              help='Limit search to specific document type')
 @click.option('--top-k', '-k', type=int, default=5, help='Number of results to return')
 @async_command
-async def search(query, filters=None, top_k=5):
-    """Search for contracts using the query router."""
+async def search(query, filters=None, type=None, top_k=5):
+    """Search for documents using the query router."""
     # Parse filters JSON if provided
     try:
-        filter_dict = json.loads(filters) if filters else None
+        filter_dict = json.loads(filters) if filters else {}
     except Exception as e:
         click.echo(f"Invalid filters JSON: {e}", err=True)
         return
+
+    # Add document_type filter if specified
+    if type:
+        filter_dict["metadata.document_type"] = type
 
     # Perform search
     try:
@@ -298,8 +347,10 @@ async def search(query, filters=None, top_k=5):
     click.echo("\nResults:")
     for i, r in enumerate(results['results'], 1):
         click.echo(f"\n--- Result {i} ---")
-        click.echo(f"Contract: {r['contract_title']} (ID: {r['contract_id']})")
-        click.echo(f"Clause: {r.get('clause_title', r['clause_type'])}")
+        doc_type = r.get('metadata', {}).get('document_type', 'document')
+        click.echo(f"{doc_type.capitalize()}: {r.get('document_title', 'Untitled')} (ID: {r.get('document_id', 'Unknown')})")
+        if 'clause_title' in r or 'clause_type' in r:
+            click.echo(f"Clause: {r.get('clause_title', r.get('clause_type', 'Unknown'))}")
         click.echo(f"Relevance: {r['relevance_score']:.4f}")
         click.echo(f"Content: {r['content'][:100]}...")
 
@@ -323,15 +374,16 @@ def test_embedding(model_name=None):
     except Exception as e:
         click.echo(f"Error testing embedding model: {e}", err=True)
 
-
 @cli.command()
 @click.argument('pdf_path', type=click.Path(exists=True))
 @click.option('--title', '-t', help='Optional title override')
-@click.option('--contract-type', '-c', help='Optional contract type')
+@click.option('--type', '-d', type=click.Choice(['contract', 'email', 'recap', 'deal']), 
+              default='contract', help='Document type')
+@click.option('--document-type', '-dt', help='Specific document sub-type (e.g., NDA, lease)')
 @click.option('--tags', help='Optional comma-separated tags')
 @async_command
-async def ingest_pdf(pdf_path, title=None, contract_type=None, tags=None):
-    """Ingest a contract from a PDF file."""
+async def ingest_pdf(pdf_path, title=None, type='contract', document_type=None, tags=None):
+    """Ingest a document from a PDF file."""
     try:
         if not pdf_path.lower().endswith('.pdf'):
             click.echo("File must be a PDF", err=True)
@@ -341,42 +393,96 @@ async def ingest_pdf(pdf_path, title=None, contract_type=None, tags=None):
         pdf_processor = PDFProcessor()
         
         # Process PDF
-        click.echo(f"Processing PDF: {pdf_path}")
-        contract_data = await pdf_processor.process_pdf(pdf_path)
+        click.echo(f"Processing PDF as {type}: {pdf_path}")
+        document_data = await pdf_processor.process_pdf(pdf_path, doc_type=type)
         
         # Override with provided options if any
         if title:
-            contract_data["title"] = title
-        if contract_type:
-            contract_data["metadata"]["contract_type"] = contract_type
+            document_data["title"] = title
+        if document_type:
+            if type == 'contract':
+                document_data["metadata"]["contract_type"] = document_type
+            elif type == 'deal':
+                document_data["metadata"]["deal_type"] = document_type
         if tags:
-            contract_data["metadata"]["tags"] = [tag.strip() for tag in tags.split(',')]
+            document_data["metadata"]["tags"] = [tag.strip() for tag in tags.split(',')]
         
-        # Validate contract structure
+        # Add document_type to metadata if not already present
+        if "metadata" in document_data and "document_type" not in document_data["metadata"]:
+            document_data["metadata"]["document_type"] = type
+        
+        # Validate document structure based on type
         try:
-            contract_obj = ContractCreate.parse_obj(contract_data)
+            if type == 'contract':
+                doc_obj = ContractCreate.parse_obj(document_data)
+            elif type == 'email':
+                doc_obj = EmailCreate.parse_obj(document_data)
+            elif type == 'recap':
+                doc_obj = RecapCreate.parse_obj(document_data)
+            elif type == 'deal':
+                doc_obj = DealCreate.parse_obj(document_data)
         except ValidationError as ve:
-            click.echo("Invalid contract structure:", err=True)
+            click.echo(f"Invalid {type} structure:", err=True)
             click.echo(ve.json(), err=True)
             return
         
         # Process through pipeline
-        result = await pipeline.process_document(contract_obj.dict())
+        result = await pipeline.process_document(doc_obj.dict())
         
         # Success output
-        click.echo(f"PDF contract ingested successfully: {result['id']}")
-        click.echo(f"Title: {result['title']}")
-        click.echo(f"Clauses: {result['clauses_count']}")
-        click.echo(f"Status: {result['status']}")
+        show_ingestion_result(type, result)
         
     except Exception as e:
-        click.echo(f"Error processing PDF contract: {e}", err=True)
+        click.echo(f"Error processing PDF document: {e}", err=True)
 
 if __name__ == "__main__":
     cli()
 
-
 === End of ./cli.py ===
+
+
+=== File: ./combiner.py ===
+# combiner.py
+import os
+from pathlib import Path
+
+# List of files to combine (relative to project root)
+FILES_TO_COMBINE = [
+    "clm_system/cli.py",
+    "clm_system/schemas/schemas.py",
+    "clm_system/core/query_engine/search.py",
+    "clm_system/core/database/elasticsearch_client.py",
+    "clm_system/core/pipeline/orchestrator.py",
+    "clm_system/core/query_engine/query_classifier.py",
+    # Add new files using the same pattern
+]
+
+def combine_files():
+    project_root = Path(__file__).parent.parent  # Adjust based on your structure
+    combined_path = project_root / "combined.txt"
+    
+    with open(combined_path, "w", encoding="utf-8") as combined_file:
+        for rel_path in FILES_TO_COMBINE:
+            abs_path = project_root / rel_path
+            header = f"\n\n{'=' * 80}\n# FILE: {rel_path}\n{'=' * 80}\n\n"
+            
+            try:
+                combined_file.write(header)
+                with open(abs_path, "r", encoding="utf-8") as source_file:
+                    combined_file.write(source_file.read())
+                print(f"✓ Added {rel_path}")
+            except FileNotFoundError:
+                print(f"⚠️  Missing: {abs_path}")
+            except Exception as e:
+                print(f"⚠️  Error reading {rel_path}: {str(e)}")
+
+    print(f"\nCombined file created at: {combined_path}")
+
+if __name__ == "__main__":
+    print("Starting file combination...")
+    combine_files()
+
+=== End of ./combiner.py ===
 
 
 === File: ./config.py ===
@@ -445,7 +551,6 @@ settings = get_settings()
 
 
 === File: ./core/database/elasticsearch_client.py ===
-
 # File: clm_system/core/database/elasticsearch_client.py
 import logging
 from typing import Dict, List, Any, Optional
@@ -461,17 +566,18 @@ class ElasticsearchClient:
     
     def __init__(self):
         self.client = AsyncElasticsearch(settings.elasticsearch_uri)
-        self.index_name = "contracts"
+        self.index_name = "documents"  # Changed from 'contracts' to 'documents'
     
     async def ensure_index(self):
-        """Ensures the contracts index exists with proper mappings."""
+        """Ensures the documents index exists with proper mappings for all document types."""
         try:
             # Check if index exists
             exists = await self.client.indices.exists(index=self.index_name)
             if not exists:
-                # Create index with mappings
+                # Create index with mappings for all document types
                 mappings = {
                     "mappings": {
+                        "dynamic": "strict",
                         "properties": {
                             "id": {"type": "keyword"},
                             "title": {"type": "text", "analyzer": "standard"},
@@ -479,7 +585,11 @@ class ElasticsearchClient:
                             "updated_at": {"type": "date"},
                             "metadata": {
                                 "properties": {
+                                    "document_type": {"type": "keyword"},
+                                    "tags": {"type": "keyword"},
+                                    "status": {"type": "keyword"},
                                     "contract_type": {"type": "keyword"},
+                                    "deal_type": {"type": "keyword"},
                                     "effective_date": {"type": "date"},
                                     "expiration_date": {"type": "date"},
                                     "parties": {
@@ -489,10 +599,29 @@ class ElasticsearchClient:
                                             "id": {"type": "keyword"}
                                         }
                                     },
-                                    "status": {"type": "keyword"},
-                                    "tags": {"type": "keyword"}
+                                    "from_address": {"type": "keyword"},
+                                    "to": {"type": "keyword"},
+                                    "cc": {"type": "keyword"},
+                                    "bcc": {"type": "keyword"},
+                                    "subject": {"type": "text"},
+                                    "has_attachments": {"type": "boolean"},
+                                    "attachment_count": {"type": "integer"},  # Add this line
+                                    "attachment_count": {"type": "integer"},  # Add this line
+                                    "attachment_names": {"type": "keyword"},  # Add this line
+                                    "sent_date": {"type": "date"},
+                                    "volume": {"type": "keyword"},
+                                    "price_per_unit": {"type": "float"},
+                                    "meeting_date": {"type": "date"},
+                                    "participants": {"type": "keyword"},
+                                    "decisions": {"type": "text"},
+                                    "action_items": {"type": "text"}
                                 }
-                            },
+                            },  # Added missing comma here
+                            # Content fields for different types
+                            "content": {"type": "text"},  # Email content
+                            "summary": {"type": "text"},  # Recap summary
+                            "key_points": {"type": "text"},  # Recap key points
+                            "financial_terms": {"type": "object"},  # Deal terms
                             "clauses": {
                                 "type": "nested",
                                 "properties": {
@@ -501,7 +630,13 @@ class ElasticsearchClient:
                                     "type": {"type": "keyword"},
                                     "text": {"type": "text", "analyzer": "standard"},
                                     "position": {"type": "integer"},
-                                    "metadata": {"type": "object"}
+                                    "metadata": {
+                                        "type": "object",
+                                        "properties": {
+                                            "attachment_names": {"type": "keyword"},  # Add this line
+                                            "section_type": {"type": "keyword"}
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -513,12 +648,12 @@ class ElasticsearchClient:
             logger.error(f"Error ensuring Elasticsearch index: {str(e)}")
             raise
     
-    async def index_contract(self, contract: Dict[str, Any]) -> Dict[str, Any]:
+    async def index_document(self, document: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Indexes a contract in Elasticsearch.
+        Indexes a document in Elasticsearch.
         
         Args:
-            contract: Contract data
+            document: Document data (any type)
             
         Returns:
             Elasticsearch response
@@ -530,8 +665,8 @@ class ElasticsearchClient:
             # Index document
             response = await self.client.index(
                 index=self.index_name,
-                id=contract["id"],
-                document=contract,
+                id=document["id"],
+                document=document,
                 refresh=True  # Make document immediately searchable
             )
             return response
@@ -539,11 +674,16 @@ class ElasticsearchClient:
             logger.error(f"Elasticsearch index error: {str(e)}")
             raise
     
+    # Alias for backward compatibility
+    async def index_contract(self, contract: Dict[str, Any]) -> Dict[str, Any]:
+        """Alias for index_document for backward compatibility."""
+        return await self.index_document(contract)
+    
     async def search(
         self, query: str, filters: Optional[Dict[str, Any]] = None, top_k: int = 5
     ) -> List[Dict[str, Any]]:
         """
-        Searches for contracts in Elasticsearch.
+        Searches for documents in Elasticsearch.
         
         Args:
             query: Search query
@@ -556,41 +696,70 @@ class ElasticsearchClient:
         try:
             await self.ensure_index()
             
+            # Determine document type for type-specific field mapping
+            doc_type = filters.get("metadata.document_type", "contract") if filters else "contract"
+            
+            # Base query structure
             search_query = {
                 "query": {
                     "bool": {
-                        "must": [
-                            {
-                                "nested": {
-                                    "path": "clauses",
-                                    "query": {
-                                        "multi_match": {
-                                            "query": query,
-                                            "fields": ["clauses.title^1.5", "clauses.text"]
-                                        }
-                                    },
-                                    "inner_hits": {
-                                        "highlight": {
-                                            "fields": {
-                                                "clauses.text": {"fragment_size": 150}
-                                            }
-                                        },
-                                        "_source": True,
-                                        "size": 3  # Maximum number of clause matches per contract
-                                    }
-                                }
-                            },
-                            {
-                                "multi_match": {
-                                    "query": query,
-                                    "fields": ["title^2"]
-                                }
-                            }
-                        ]
+                        "must": []
                     }
                 },
                 "size": top_k
             }
+            
+            # Add type-specific queries
+            if doc_type == "contract" or doc_type == "deal":
+                # For contract/deal, search in clauses and title
+                search_query["query"]["bool"]["must"] = [
+                    {
+                        "nested": {
+                            "path": "clauses",
+                            "query": {
+                                "multi_match": {
+                                    "query": query,
+                                    "fields": ["clauses.title^1.5", "clauses.text"]
+                                }
+                            },
+                            "inner_hits": {
+                                "highlight": {
+                                    "fields": {
+                                        "clauses.text": {"fragment_size": 150}
+                                    }
+                                },
+                                "_source": True,
+                                "size": 3  # Maximum number of clause matches per contract
+                            }
+                        }
+                    },
+                    {
+                        "multi_match": {
+                            "query": query,
+                            "fields": ["title^2"]
+                        }
+                    }
+                ]
+            elif doc_type == "email":
+                # For email, search in content and subject
+                search_query["query"]["bool"]["must"] = [
+                    {
+                        "multi_match": {
+                            "query": query,
+                            "fields": ["content", "metadata.subject^2"]
+                        }
+                    }
+                ]
+            elif doc_type == "recap":
+                # For recap, search in summary and key points
+                search_query["query"]["bool"]["must"] = [
+                    {
+                        "multi_match": {
+                            "query": query,
+                            "fields": ["summary^2", "key_points"]
+                        }
+                    }
+                ]
 
             # Add filters if provided
             if filters:
@@ -619,159 +788,218 @@ class ElasticsearchClient:
             results = []
             for hit in response["hits"]["hits"]:
                 source = hit["_source"]
-                inner_hits = hit.get("inner_hits", {}).get("clauses", {}).get("hits", {}).get("hits", [])
+                doc_type = source.get("metadata", {}).get("document_type", "contract")
                 
-                for clause_hit in inner_hits:
-                    clause_source = clause_hit["_source"]
-                    highlights = clause_hit.get("highlight", {}).get("clauses.text", [])
-                    highlight_text = highlights[0] if highlights else clause_source.get("text", "")[:150]
+                # Process results based on document type
+                if doc_type in ["contract", "deal"]:
+                    # Process contract/deal with clauses
+                    inner_hits = hit.get("inner_hits", {}).get("clauses", {}).get("hits", {}).get("hits", [])
                     
+                    for clause_hit in inner_hits:
+                        clause_source = clause_hit["_source"]
+                        highlights = clause_hit.get("highlight", {}).get("clauses.text", [])
+                        highlight_text = highlights[0] if highlights else clause_source.get("text", "")[:150]
+                        
+                        results.append({
+                            "clause_id": clause_source["id"],
+                            "contract_id": source["id"],
+                            "contract_title": source["title"],
+                            "clause_type": clause_source["type"],
+                            "clause_title": clause_source.get("title"),
+                            "content": highlight_text,
+                            "relevance_score": hit["_score"] * clause_hit["_score"],
+                            "metadata": {
+                                **source.get("metadata", {}),
+                                **clause_source.get("metadata", {})
+                            }
+                        })
+                elif doc_type == "email":
+                    # Process email results
+                    content_preview = source.get("content", "")[:150]
                     results.append({
-                        "clause_id": clause_source["id"],
+                        "clause_id": f"{source['id']}_content",
                         "contract_id": source["id"],
-                        "contract_title": source["title"],
-                        "clause_type": clause_source["type"],
-                        "clause_title": clause_source.get("title"),
-                        "content": highlight_text,
-                        "relevance_score": hit["_score"] * clause_hit["_score"],
-                        "metadata": {
-                            **source.get("metadata", {}),
-                            **clause_source.get("metadata", {})
-                        }
+                        "contract_title": source.get("metadata", {}).get("subject", "Email"),
+                        "clause_type": "email_content",
+                        "clause_title": None,
+                        "content": content_preview,
+                        "relevance_score": hit["_score"],
+                        "metadata": source.get("metadata", {})
+                    })
+                elif doc_type == "recap":
+                    # Process recap results
+                    summary_preview = source.get("summary", "")[:150]
+                    results.append({
+                        "clause_id": f"{source['id']}_summary",
+                        "contract_id": source["id"],
+                        "contract_title": source.get("title", "Meeting Recap"),
+                        "clause_type": "recap_summary",
+                        "clause_title": None,
+                        "content": summary_preview,
+                        "relevance_score": hit["_score"],
+                        "metadata": source.get("metadata", {})
                     })
             
             return sorted(results, key=lambda x: -x["relevance_score"])[:top_k]
         except Exception as e:
             logger.error(f"Elasticsearch search error: {str(e)}")
             raise
- 
 
 === End of ./core/database/elasticsearch_client.py ===
 
 
 === File: ./core/database/mongodb_client.py ===
-
-# File: clm_system/core/database/mongodb_client.py
+# clm_system/core/database/mongodb_client.py
 import logging
-from typing import Dict, List, Any, Optional
-
+from dateutil import parser
+from typing import Any, Dict, List, Optional, Tuple  # Add Tuple to imports
 from pymongo import MongoClient
 from pymongo.errors import PyMongoError
-
+from motor.motor_asyncio import AsyncIOMotorClient
 from clm_system.config import settings
 
 logger = logging.getLogger(__name__)
 
 class MongoDBClient:
-    """Client for interacting with MongoDB."""
-    
     def __init__(self):
         self.client = AsyncIOMotorClient(settings.mongodb_uri)
         self.db = self.client[settings.mongodb_database]
-        self.contracts_collection = self.db.contracts
+        self.documents_collection = self.db.documents  # Generic collection name
     
-    async def insert_contract(self, contract: Dict[str, Any]) -> str:
+    async def insert_document(self, document: Dict[str, Any]) -> str:
         """
-        Inserts a contract into the MongoDB collection.
+        Inserts any type of document into MongoDB.
         
         Args:
-            contract: Contract data
+            document: Document data (contract, deal, email, etc.)
             
         Returns:
-            ID of the inserted contract
+            ID of the inserted document
         """
         try:
             # Convert datetime to string for MongoDB
-            contract = contract.copy()
-            if "created_at" in contract:
-                contract["created_at"] = contract["created_at"].isoformat()
-            if "updated_at" in contract:
-                contract["updated_at"] = contract["updated_at"].isoformat()
+            doc = document.copy()
+            self._normalize_datetimes(doc)
+            
+            # Validate required fields
+            if "id" not in doc:
+                raise ValueError("Document must contain an 'id' field")
+            if "metadata" not in doc or "document_type" not in doc["metadata"]:
+                raise ValueError("Document metadata must contain 'document_type'")
                 
-            # Use async insert
-            result = await self.contracts_collection.insert_one(contract)
+            result = await self.documents_collection.insert_one(doc)
             return str(result.inserted_id)
         except PyMongoError as e:
             logger.error(f"MongoDB insert error: {str(e)}")
             raise
         
-    async def get_contract(self, contract_id: str) -> Optional[Dict[str, Any]]:
+    async def get_document(self, document_id: str) -> Optional[Dict[str, Any]]:
         """
-        Retrieves a contract by ID.
+        Retrieves any document by ID.
         
         Args:
-            contract_id: ID of the contract to retrieve
+            document_id: ID of the document to retrieve
             
         Returns:
-            Contract data or None if not found
+            Document data or None if not found
         """
         try:
-            contract = self.contracts_collection.find_one({"id": contract_id})
-            return contract
+            document = await self.documents_collection.find_one({"id": document_id})
+            return self._denormalize_datetimes(document)
         except PyMongoError as e:
             logger.error(f"MongoDB get error: {str(e)}")
             raise
     
-    async def get_contracts(
-        self, filters: Optional[Dict[str, Any]] = None, limit: int = 100, skip: int = 0
-    ) -> List[Dict[str, Any]]:
+    async def get_documents(
+    self,
+    filters: Optional[Dict[str, Any]] = None,
+    limit: int = 100,
+    skip: int = 0,
+    sort: Optional[List[Tuple[str, int]]] = None  # Now properly typed
+) -> List[Dict[str, Any]]:
         """
-        Retrieves contracts matching the given filters.
+        Retrieves documents matching the given filters.
         
         Args:
             filters: Query filters
-            limit: Maximum number of contracts to return
-            skip: Number of contracts to skip
+            limit: Maximum number of documents to return
+            skip: Number of documents to skip
+            sort: List of (field, direction) tuples to sort by
             
         Returns:
-            List of contracts
+            List of documents
         """
         try:
             query = filters or {}
-            contracts = list(
-                self.contracts_collection
-                .find(query)
-                .limit(limit)
-                .skip(skip)
-            )
-            return contracts
+            cursor = self.documents_collection.find(query)
+            
+            if sort:
+                cursor = cursor.sort(sort)
+                
+            documents = await cursor.skip(skip).limit(limit).to_list(length=None)
+            return [self._denormalize_datetimes(doc) for doc in documents]
         except PyMongoError as e:
-            logger.error(f"MongoDB get_contracts error: {str(e)}")
+            logger.error(f"MongoDB get_documents error: {str(e)}")
             raise
 
+    def _normalize_datetimes(self, document: Dict[str, Any]):
+        """Convert datetime fields to ISO strings for MongoDB storage"""
+        for field in ['created_at', 'updated_at']:
+            if field in document:
+                document[field] = document[field].isoformat()
+                
+        # Handle metadata dates
+        if 'metadata' in document:
+            for dt_field in ['effective_date', 'expiration_date', 'sent_date', 'meeting_date']:
+                if dt_field in document['metadata'] and document['metadata'][dt_field] is not None:
+                    document['metadata'][dt_field] = document['metadata'][dt_field].isoformat()
+
+    def _denormalize_datetimes(self, document: Optional[Dict[str, Any]]):
+        """Convert ISO strings back to datetime objects"""
+        if not document:
+            return None
+            
+        for field in ['created_at', 'updated_at']:
+            if field in document:
+                document[field] = parser.isoparse(document[field])
+                
+        # Handle metadata dates
+        if 'metadata' in document:
+            for dt_field in ['effective_date', 'expiration_date', 'sent_date', 'meeting_date']:
+                if dt_field in document['metadata'] and isinstance(document['metadata'][dt_field], str):
+                    document['metadata'][dt_field] = parser.isoparse(document['metadata'][dt_field])
+                    
+        return document
 
 === End of ./core/database/mongodb_client.py ===
 
 
 === File: ./core/database/qdrant_client.py ===
-
 # File: clm_system/core/database/qdrant_client.py
 import logging
+import uuid
 from typing import Dict, List, Any, Optional
 
 from qdrant_client import QdrantClient as QdrantClientLib, models
-
 from clm_system.config import settings
 
 logger = logging.getLogger(__name__)
 
-class  QdrantClient:
-    """Client for interacting with Qdrant vector database."""
+class QdrantClient:
+    """Client for interacting with Qdrant vector database with multi-document support"""
     
     def __init__(self):
-        self.client = QdrantClientLib(url=settings.qdrant_uri)  # You might want to differentiate here if desired
-        self.collection_name = "contract_clauses"
+        self.client = QdrantClientLib(url=settings.qdrant_uri)
+        self.collection_name = "document_chunks"  # Generic collection name
         self.vector_size = settings.vector_dimension
     
     async def ensure_collection(self):
-        """Ensures the vector collection exists."""
+        """Ensures the vector collection exists with updated schema"""
         try:
-            # Check if collection exists
             collections = self.client.get_collections().collections
             collection_names = [c.name for c in collections]
             
             if self.collection_name not in collection_names:
-                # Create collection
                 self.client.create_collection(
                     collection_name=self.collection_name,
                     vectors_config=models.VectorParams(
@@ -779,158 +1007,224 @@ class  QdrantClient:
                         distance=models.Distance.COSINE
                     )
                 )
-                
-                # Create payload indexes for fast filtering
-                self.client.create_payload_index(
-                    collection_name=self.collection_name,
-                    field_name="contract_id",
-                    field_schema=models.PayloadSchemaType.KEYWORD
-                )
-                self.client.create_payload_index(
-                    collection_name=self.collection_name,
-                    field_name="clause_type",
-                    field_schema=models.PayloadSchemaType.KEYWORD
-                )
-                
+
+                # Create generic payload indexes
+                index_config = [
+                    ("document_id", models.PayloadSchemaType.KEYWORD),
+                    ("chunk_type", models.PayloadSchemaType.KEYWORD),
+                    ("document_type", models.PayloadSchemaType.KEYWORD),
+                    ("tags", models.PayloadSchemaType.KEYWORD),
+                    ("metadata.has_attachments", models.PayloadSchemaType.BOOL),  # Index for boolean metadata
+                ]
+
+                for field, schema_type in index_config:
+                    self.client.create_payload_index(
+                        collection_name=self.collection_name,
+                        field_name=field,
+                        field_schema=schema_type
+                    )
+
                 logger.info(f"Created Qdrant collection {self.collection_name}")
         except Exception as e:
-            logger.error(f"Error ensuring Qdrant collection: {str(e)}")
+            logger.error(f"Error ensuring collection: {str(e)}")
             raise
 
-    
     async def store_embedding(
-    self,
-    contract_id: str,
-    contract_title: str,
-    clause_id: str,
-    clause_type: str,
-    content: str,
-    embedding: List[float],
-    clause_title: Optional[str] = None,
-    metadata: Optional[Dict[str, Any]] = None
-) -> str:
+        self,
+        document_id: str,
+        document_title: str,
+        chunk_id: str,
+        chunk_type: str,
+        content: str,
+        embedding: List[float],
+        document_type: str,
+        chunk_title: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> str:
         """
-        Stores a clause embedding in Qdrant.
+        Stores any type of document chunk embedding
         """
         try:
-            # Ensure collection exists
             await self.ensure_collection()
+
+            # Ensure metadata is a dictionary
+            metadata_dict = metadata or {}
             
-            # Build payload
+            # Ensure boolean values remain as booleans, not strings
+            if "has_attachments" in metadata_dict:
+                # Explicitly convert to boolean if it's not already
+                if not isinstance(metadata_dict["has_attachments"], bool):
+                    metadata_dict["has_attachments"] = bool(metadata_dict["has_attachments"])
+                logger.debug(f"has_attachments is set to {metadata_dict['has_attachments']} ({type(metadata_dict['has_attachments']).__name__})")
+
             payload = {
-                "contract_id": contract_id,
-                "contract_title": contract_title,
-                "clause_id": clause_id,  # Keep original ID in payload
-                "clause_type": clause_type,
-                "content": content
+                "document_id": document_id,
+                "document_title": document_title,
+                "chunk_id": chunk_id,
+                "chunk_type": chunk_type,
+                "document_type": document_type,
+                "content": content,
+                "metadata": metadata_dict,
             }
-            
-            if clause_title:
-                payload["clause_title"] = clause_title
-                
-            if metadata:
-                payload["metadata"] = metadata
-            
-            # Convert clause_id to UUID format if it's not already a UUID
-            import uuid
-            point_id = clause_id
-            try:
-                # Check if it's already a UUID
-                uuid.UUID(clause_id)
-            except ValueError:
-                # If not a UUID, generate a new one based on the clause_id
-                point_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, clause_id))
-            
-            # Store point
+
+            if chunk_title:
+                payload["chunk_title"] = chunk_title
+
+            # Generate unique ID across all document types
+            unique_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{document_id}_{chunk_id}"))
+
+            # Log payload for debugging
+            logger.debug(f"Storing point with payload: {payload}")
+
             self.client.upsert(
                 collection_name=self.collection_name,
-                points=[
-                    models.PointStruct(
-                        id=point_id,  # Use the UUID
-                        vector=embedding,
-                        payload=payload
-                    )
-                ]
+                points=[models.PointStruct(
+                    id=unique_id,
+                    vector=embedding,
+                    payload=payload
+                )]
             )
-            
-            return clause_id
+            return chunk_id
         except Exception as e:
-            logger.error(f"Qdrant store error: {str(e)}")
-            raise
-    
-    async def search(
-        self, 
-        embedding: List[float],
-        filters: Optional[Dict[str, Any]] = None,
-        top_k: int = 5
-    ) -> List[Dict[str, Any]]:
-        """
-        Searches for similar clauses in Qdrant.
-        
-        Args:
-            embedding: Query vector embedding
-            filters: Optional filters
-            top_k: Maximum number of results to return
-            
-        Returns:
-            List of search results
-        """
-        try:
-            # Ensure collection exists
-            await self.ensure_collection()
-            
-            # Build filter
-            filter_query = None
-            if filters:
-                conditions = []
-                for field, value in filters.items():
-                    if field == "contract_id":
-                        conditions.append(
-                            models.FieldCondition(
-                                key="contract_id",
-                                match=models.MatchValue(value=value)
-                            )
-                        )
-                    elif field == "clause_type":
-                        conditions.append(
-                            models.FieldCondition(
-                                key="clause_type",
-                                match=models.MatchValue(value=value)
-                            )
-                        )
-                
-                if conditions:
-                    filter_query = models.Filter(
-                        must=conditions
-                    )
-            
-            # Execute search
-            search_results = self.client.search(
-                collection_name=self.collection_name,
-                query_vector=embedding,
-                query_filter=filter_query,
-                limit=top_k
-            )
-            
-            # Process results
-            results = []
-            for hit in search_results:
-                results.append({
-                    "clause_id": hit.payload["clause_id"],
-                    "contract_id": hit.payload["contract_id"],
-                    "contract_title": hit.payload["contract_title"],
-                    "clause_type": hit.payload["clause_type"],
-                    "clause_title": hit.payload.get("clause_title"),
-                    "content": hit.payload["content"],
-                    "relevance_score": hit.score,
-                    "metadata": hit.payload.get("metadata", {})
-                })
-            
-            return results
-        except Exception as e:
-            logger.error(f"Qdrant search error: {str(e)}")
+            logger.error(f"Storage error: {str(e)}")
             raise
 
+    async def search(
+    self,
+    embedding: List[float],
+    filters: Optional[Dict[str, Any]] = None,
+    top_k: int = 5
+) -> List[Dict[str, Any]]:
+        """Generic search across all document types with filters"""
+        try:
+            await self.ensure_collection()
+            query_filter = self._build_filter(filters)
+
+            response = self.client.search(
+                collection_name=self.collection_name,
+                query_vector=embedding,
+                query_filter=query_filter,
+                limit=top_k,
+                with_payload=True
+            )
+
+            return [self._format_result(hit) for hit in response]
+        except Exception as e:
+            logger.error(f"Search error: {str(e)}")
+            raise
+    
+    async def scroll(self, document_id: str) -> List[Dict[str, Any]]:
+        """Helper method to verify points are stored in Qdrant"""
+        try:
+            scroll_filter = models.Filter(
+                must=[models.FieldCondition(
+                    key="document_id", 
+                    match=models.MatchValue(value=document_id)
+                )]
+            )
+            
+            points, _ = self.client.scroll(
+                collection_name=self.collection_name,
+                scroll_filter=scroll_filter,
+                with_payload=True,
+                with_vectors=False
+            )
+            
+            # Log the first point's payload structure for debugging
+            if points:
+                logger.debug(f"Sample point payload structure: {points[0].payload}")
+                # Check if has_attachments exists and log its type
+                if 'metadata' in points[0].payload and 'has_attachments' in points[0].payload['metadata']:
+                    val = points[0].payload['metadata']['has_attachments']
+                    logger.debug(f"has_attachments value: {val}, type: {type(val).__name__}")
+            
+            return [self._format_result(point) for point in points]
+        except Exception as e:
+            logger.error(f"Scroll error: {str(e)}")
+            raise
+    
+    async def debug_points(self, document_id: str):
+        """Debug method to print detailed point information"""
+        try:
+            points, _ = self.client.scroll(
+                collection_name=self.collection_name,
+                scroll_filter=models.Filter(
+                    must=[models.FieldCondition(
+                        key="document_id", 
+                        match=models.MatchValue(value=document_id)
+                    )]
+                ),
+                limit=10,
+                with_payload=True
+            )
+            
+            debug_info = []
+            for i, point in enumerate(points):
+                debug_info.append(f"Point {i+1}:")
+                debug_info.append(f"  ID: {point.id}")
+                debug_info.append(f"  Payload: {point.payload}")
+                
+                # Check metadata structure
+                if 'metadata' in point.payload:
+                    metadata = point.payload['metadata']
+                    debug_info.append(f"  Metadata:")
+                    for key, value in metadata.items():
+                        debug_info.append(f"    {key}: {value} (type: {type(value).__name__})")
+            
+            return "\n".join(debug_info)
+        except Exception as e:
+            logger.error(f"Debug error: {str(e)}")
+            return f"Error debugging points: {str(e)}"
+    
+    def _format_result(self, hit) -> Dict[str, Any]:
+        """Standardizes result format across document types"""
+        payload = hit.payload
+        return {
+            "document_id": payload["document_id"],
+            "document_title": payload["document_title"],
+            "document_type": payload["document_type"],
+            "chunk_id": payload["chunk_id"],
+            "chunk_type": payload["chunk_type"],
+            "content": payload["content"],
+            "relevance_score": hit.score if hasattr(hit, "score") else 1.0,
+            "metadata": payload.get("metadata", {}),
+            "chunk_title": payload.get("chunk_title")
+        }
+    
+    def _build_filter(self, filters: Optional[Dict[str, Any]] = None) -> Optional[models.Filter]:
+        """Convert filters dictionary to Qdrant Filter object"""
+        if not filters:
+            return None
+
+        conditions = []
+        for field, value in filters.items():
+            # Handle nested metadata filters
+            if field.startswith("metadata."):
+                key = field.split(".", 1)[1]
+                # Ensure booleans are correctly typed
+                if isinstance(value, bool) or value in (True, False):
+                    conditions.append(
+                        models.FieldCondition(
+                            key=f"metadata.{key}",
+                            match=models.MatchValue(value=bool(value))
+                        )
+                    )
+                else:
+                    conditions.append(
+                        models.FieldCondition(
+                            key=f"metadata.{key}",
+                            match=models.MatchValue(value=value)
+                        )
+                    )
+            else:
+                conditions.append(
+                    models.FieldCondition(
+                        key=field,
+                        match=models.MatchValue(value=value)
+                    )
+                )
+
+        return models.Filter(must=conditions) if conditions else None
 
 === End of ./core/database/qdrant_client.py ===
 
@@ -943,23 +1237,60 @@ class  QdrantClient:
 
 === File: ./core/pipeline/base.py ===
 # clm_system/core/pipeline/base.py
-from typing import Any, Dict
+from abc import ABC, abstractmethod
+from typing import ClassVar, Dict, Type, Any, Optional
 
-class IngestorABC:
-    def ingest(self, raw: Any) -> Dict[str, Any]:
-        """Normalize raw input into our contract dict."""
-        raise NotImplementedError
+class BaseStep(ABC):
+    """Abstract base class for all pipeline steps with auto-registration"""
+    _registry: ClassVar[Dict[str, Dict[str, Type["BaseStep"]]]] = {
+        'ingestor': {},
+        'cleaner': {},
+        'chunker': {}
+    }
+    _step_type: str  # Must be set by subclasses (ingestor, cleaner, chunker)
 
-class CleanerABC:
-    def clean(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Apply PII scrubbing, standardization, etc."""
-        raise NotImplementedError
+    def __init_subclass__(cls, *, doc_type: Optional[str] = None, **kwargs):
+        super().__init_subclass__(**kwargs)
+        
+        # Skip direct subclasses of BaseStep (abstract base classes)
+        if BaseStep in cls.__bases__:
+            return
+        
+        # Check if the class is abstract (has any abstract methods)
+        is_abstract = bool(getattr(cls, '__abstractmethods__', None))
+        
+        if doc_type is None:
+            if not is_abstract:
+                raise TypeError(f"Concrete {cls._step_type} subclasses must provide 'doc_type'")
+            return
+        
+        registry = cls._registry[cls._step_type]
+        if doc_type in registry:
+            raise ValueError(f"Duplicate {cls._step_type} registration for doc_type: {doc_type}")
+        registry[doc_type] = cls
+        cls.doc_type = doc_type
 
-class ChunkerABC:
+    @abstractmethod
+    def process(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Process the document data"""
+        pass
+
+class BaseIngestor(BaseStep, ABC):
+    """Base class for document ingestion"""
+    _step_type = 'ingestor'
+
+class BaseCleaner(BaseStep, ABC):
+    """Base class for document cleaning"""
+    _step_type = 'cleaner'
+
+class BaseChunker(BaseStep, ABC):
+    """Base class for document chunking"""
+    _step_type = 'chunker'
+    
+    @abstractmethod
     def chunk(self, text: str) -> list[str]:
-        """Split long text into embedding‑ready chunks."""
-        raise NotImplementedError
-
+        """Split text into chunks"""
+        pass
 
 === End of ./core/pipeline/base.py ===
 
@@ -980,13 +1311,16 @@ class ChunkerABC(ABC):
 === File: ./core/pipeline/chunking/contract.py ===
 # clm_system/core/pipeline/chunking/contract.py
 from typing import List
+from spacy.lang.en import English
 import spacy
-from .base import ChunkerABC
+import logging
+from ..base import BaseChunker
 from clm_system.config import settings
+from typing import Dict, Any
+logger = logging.getLogger(__name__)
 
-class ContractChunker(ChunkerABC):
+class ContractChunker(BaseChunker, doc_type="contract"):
     def __init__(self):
-        # Create blank English pipeline with just the sentencizer
         self.nlp = English()
         self.nlp.add_pipe("sentencizer")
         logger.info("SpaCy pipeline components: %s", self.nlp.pipe_names)
@@ -1006,15 +1340,12 @@ class ContractChunker(ChunkerABC):
             sentence_len = len(sentence_tokens)
             
             if sentence_len > size:
-                # Handle very long sentences
                 for i in range(0, sentence_len, size - overlap):
                     chunk_tokens = sentence_tokens[i:min(i + size, sentence_len)]
                     chunks.append(" ".join(chunk_tokens))
             else:
                 if current_length + sentence_len > size:
-                    # Finalize current chunk
                     chunks.append(" ".join(current_chunk))
-                    # Start new chunk with overlap tokens from previous chunk
                     overlap_tokens = min(overlap, len(current_chunk))
                     current_chunk = current_chunk[-overlap_tokens:] if overlap_tokens > 0 else []
                     current_length = len(current_chunk)
@@ -1026,6 +1357,9 @@ class ContractChunker(ChunkerABC):
             chunks.append(" ".join(current_chunk))
 
         return chunks
+    
+    def process(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        return data  # Implement if additional processing is needed
 
 === End of ./core/pipeline/chunking/contract.py ===
 
@@ -1034,10 +1368,10 @@ class ContractChunker(ChunkerABC):
 # clm_system/core/pipeline/chunking/deal.py
 from typing import List
 import re
-from .base import ChunkerABC
+from ..base import BaseChunker
 from clm_system.config import settings
-
-class DealChunker(ChunkerABC):
+from typing import Dict, Any
+class DealChunker(BaseChunker, doc_type="deal"):
     """Chunker for oil industry deal documents."""
     
     def chunk(self, text: str) -> List[str]:
@@ -1119,6 +1453,8 @@ class DealChunker(ChunkerABC):
                 sections.append(section_text)
         
         return sections
+    def process(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        return data  # Implement if additional processing is needed
 
 === End of ./core/pipeline/chunking/deal.py ===
 
@@ -1127,10 +1463,10 @@ class DealChunker(ChunkerABC):
 # clm_system/core/pipeline/chunking/email.py
 from typing import List
 import re
-from .base import ChunkerABC
+from ..base import BaseChunker
 from clm_system.config import settings
-
-class EmailChunker(ChunkerABC):
+from typing import Dict, Any
+class EmailChunker(BaseChunker, doc_type="email"):
     """Chunker for email documents."""
     
     def chunk(self, text: str) -> List[str]:
@@ -1236,6 +1572,8 @@ class EmailChunker(ChunkerABC):
             return [text]
             
         return parts
+    def process(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        return data  # Implement if additional processing is needed
 
 === End of ./core/pipeline/chunking/email.py ===
 
@@ -1255,10 +1593,10 @@ class CleanerABC(ABC):
 
 === File: ./core/pipeline/cleaning/contract.py ===
 # clm_system/core/pipeline/cleaning/contract.py
-from .base import CleanerABC
+from ..base import BaseCleaner
 
-class ContractCleaner(CleanerABC):
-    def clean(self, data: dict) -> dict:
+class ContractCleaner(BaseCleaner, doc_type="contract"):
+    def process(self, data: dict) -> dict:
         # e.g. strip whitespace, normalize dates, remove PII
         # if already clean, return as‑is
         return data
@@ -1270,10 +1608,10 @@ class ContractCleaner(CleanerABC):
 === File: ./core/pipeline/cleaning/deal.py ===
 # clm_system/core/pipeline/cleaning/deal.py
 import re
-from .base import CleanerABC
+from ..base import BaseCleaner
 
-class DealCleaner(CleanerABC):
-    def clean(self, data: dict) -> dict:
+class DealCleaner(BaseCleaner, doc_type="deal"):
+    def process(self, data: dict) -> dict:
         """
         Clean and normalize oil industry deal data.
         
@@ -1416,10 +1754,10 @@ class DealCleaner(CleanerABC):
 import re
 from html import unescape
 from bs4 import BeautifulSoup
-from .base import CleanerABC
+from ..base import BaseCleaner
 
-class EmailCleaner(CleanerABC):
-    def clean(self, data: dict) -> dict:
+class EmailCleaner(BaseCleaner, doc_type="email"):
+    def process(self, data: dict) -> dict:
         """
         Clean and normalize email data.
         
@@ -1571,10 +1909,10 @@ class EmailCleaner(CleanerABC):
 === File: ./core/pipeline/cleaning/recap.py ===
 # clm_system/core/pipeline/cleaning/recap.py
 import re
-from .base import CleanerABC
+from ..base import BaseCleaner
 
-class RecapCleaner(CleanerABC):
-    def clean(self, data: dict) -> dict:
+class RecapCleaner(BaseCleaner, doc_type="recap"):
+    def process(self, data: dict) -> dict:
         """
         Clean and normalize recap/summary data.
         
@@ -1704,18 +2042,16 @@ class IngestorABC(ABC):
 # clm_system/core/pipeline/ingestion/contract.py
 import uuid
 from datetime import datetime
-from .base import IngestorABC
-
-class ContractIngestor(IngestorABC):
-    def ingest(self, raw: dict) -> dict:
-        
+from ..base import BaseIngestor
+from typing import Dict, Any
+class ContractIngestor(BaseIngestor, doc_type="contract"):
+    def process(self, raw: Dict[str, Any]) -> Dict[str, Any]:
         data = raw.copy()
         data.setdefault("id", str(uuid.uuid4()))
         now = datetime.utcnow()
         data["created_at"] = now
         data["updated_at"] = now
         return data
-
 
 === End of ./core/pipeline/ingestion/contract.py ===
 
@@ -1724,10 +2060,10 @@ class ContractIngestor(IngestorABC):
 # clm_system/core/pipeline/ingestion/deal.py
 import uuid
 from datetime import datetime
-from .base import IngestorABC
+from ..base import BaseIngestor
 
-class DealIngestor(IngestorABC):
-    def ingest(self, raw: dict) -> dict:
+class DealIngestor(BaseIngestor, doc_type="deal"):
+    def process(self, raw: dict) -> dict:
         """
         Process raw oil industry deal data into a standardized format.
         
@@ -1770,10 +2106,10 @@ class DealIngestor(IngestorABC):
 import uuid
 from datetime import datetime
 from email.utils import parsedate_to_datetime
-from .base import IngestorABC
+from ..base import BaseIngestor
 
-class EmailIngestor(IngestorABC):
-    def ingest(self, raw: dict) -> dict:
+class EmailIngestor(BaseIngestor, doc_type="email"):
+    def process(self, raw: dict) -> dict:
         """
         Process raw email data into a standardized format.
         
@@ -1856,10 +2192,10 @@ class EmailIngestor(IngestorABC):
 # clm_system/core/pipeline/ingestion/recap.py
 import uuid
 from datetime import datetime
-from .base import IngestorABC
+from ..base import BaseIngestor
 
-class RecapIngestor(IngestorABC):
-    def ingest(self, raw: dict) -> dict:
+class RecapIngestor(BaseIngestor, doc_type="recap"):
+    def process(self, raw: dict) -> dict:
         """
         Process raw recap/summary data into a standardized format.
         
@@ -1920,271 +2256,170 @@ class RecapIngestor(IngestorABC):
 # clm_system/core/pipeline/orchestrator.py
 import asyncio
 import logging
-from typing import Dict, Any, List, Tuple, Optional
-
-from clm_system.core.pipeline.ingestion.contract import ContractIngestor
-from clm_system.core.pipeline.ingestion.deal import DealIngestor
-from clm_system.core.pipeline.ingestion.email import EmailIngestor
-from clm_system.core.pipeline.ingestion.recap import RecapIngestor
-
-from clm_system.core.pipeline.cleaning.contract import ContractCleaner
-from clm_system.core.pipeline.cleaning.deal import DealCleaner
-from clm_system.core.pipeline.cleaning.email import EmailCleaner
-from clm_system.core.pipeline.cleaning.recap import RecapCleaner
-
-from clm_system.core.pipeline.chunking.contract import ContractChunker
-from clm_system.core.pipeline.chunking.deal import DealChunker
-from clm_system.core.pipeline.chunking.email import EmailChunker
+from typing import Dict, Any, List, Optional
 
 from clm_system.core.database.mongodb_client import MongoDBClient
 from clm_system.core.database.elasticsearch_client import ElasticsearchClient
 from clm_system.core.database.qdrant_client import QdrantClient
 from clm_system.core.utils.embeddings import get_embedding_model, compute_embedding
 
+# Import base classes to ensure registration
+from .base import BaseIngestor, BaseCleaner, BaseChunker  # Add this line
+
 logger = logging.getLogger(__name__)
 
 class PipelineService:
     def __init__(self):
-        # Document type registry with processing components
-        self.ingestors = {
-            "contract": ContractIngestor(),
-            "deal": DealIngestor(),
-            "email": EmailIngestor(),
-            "recap": RecapIngestor(),
-        }
-        
-        self.cleaners = {
-            "contract": ContractCleaner(),
-            "deal": DealCleaner(),
-            "email": EmailCleaner(),
-            "recap": RecapCleaner(),
-        }
-        
-        # Note: No RecapChunker since recaps are a component of deals
-        self.chunkers = {
-            "contract": ContractChunker(),
-            "deal": DealChunker(),
-            "email": EmailChunker(),
-        }
-        
-        # Initialize database connections
+        # Remove hardcoded component dictionaries
         self.mongo = MongoDBClient()
         self.es = ElasticsearchClient()
         self.qdrant = QdrantClient()
-        
-        # Load embedding model
         self.embedding_model = get_embedding_model()
 
     async def process_document(self, raw: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Main pipeline execution flow:
-        1. Determine document type from metadata
-        2. Run through type-specific processing components
-        3. Store in databases and vector store
-        4. Return processing results
+        Generic document processing pipeline:
+        1. Determine document type
+        2. Run through registered components
+        3. Store results
         """
         try:
-            # Determine document type (default to contract if missing)
             doc_type = raw.get("metadata", {}).get("document_type", "contract")
             
-            # Validate document type
-            if doc_type not in self.ingestors:
-                raise ValueError(f"Unsupported document type: {doc_type}")
+            # Validate document type has registered components
+            if not self._validate_components(doc_type):
+                raise ValueError(f"No processors registered for document type: {doc_type}")
+
+            # 1. Ingestion
+            ingestor = BaseIngestor._registry['ingestor'][doc_type]()
+            normalized = ingestor.process(raw)
+
+            # 2. Cleaning
+            cleaner = BaseCleaner._registry['cleaner'][doc_type]()
+            cleaned = cleaner.process(normalized)
+
+            # 3. Chunking (if chunker exists for type)
+            chunks = []
+            if doc_type in BaseChunker._registry['chunker']:
+                chunker = BaseChunker._registry['chunker'][doc_type]()
+                chunks = self._generate_chunks(cleaned, chunker)
+
+            # 4. Persistence
+            await self._persist_document(cleaned)
             
-            # Get processing components
-            ingestor = self.ingestors[doc_type]
-            cleaner = self.cleaners[doc_type]
+            if chunks:
+                await self._store_embeddings(cleaned, chunks)
+
+            return self._format_result(cleaned, doc_type, chunks)
             
-            # Pipeline execution - steps 1 & 2
-            normalized = ingestor.ingest(raw)      # Structure raw data
-            cleaned = cleaner.clean(normalized)    # Sanitize and normalize
-            
-            # Special handling for recaps - don't chunk them
-            if doc_type == "recap":
-                # Store recaps without chunking
-                await self._persist_document(cleaned)
-                
-                logger.info(f"Pipeline complete for recap {cleaned['id']}")
-                return {
-                    "id": cleaned["id"],
-                    "title": cleaned.get("title", "Untitled Recap"),
-                    "status": "indexed",
-                    "document_type": doc_type
-                }
-            else:
-                # For other document types, proceed with chunking
-                chunker = self.chunkers[doc_type]
-                
-                # Step 3: Chunk & embed based on document type structure
-                chunks = self._generate_chunks_for_type(cleaned, chunker, doc_type)
-                
-                # Step 4: Persist in MongoDB and Elasticsearch
-                await self._persist_document(cleaned)
-                
-                # Step 5: Store embeddings in Qdrant if there are chunks
-                if chunks:
-                    await self._store_embeddings(cleaned, chunks, doc_type)
-                
-                logger.info(f"Pipeline complete for {doc_type} {cleaned['id']}")
-                
-                # Return appropriate result based on document type
-                result = {
-                    "id": cleaned["id"],
-                    "title": cleaned.get("title", f"Untitled {doc_type.title()}"),
-                    "status": "indexed",
-                    "document_type": doc_type
-                }
-                
-                # Add type-specific fields
-                if doc_type == "contract" and "clauses" in cleaned:
-                    result["clauses_count"] = len(cleaned["clauses"])
-                elif doc_type == "email":
-                    if "metadata" in cleaned and "has_attachments" in cleaned["metadata"]:
-                        result["has_attachments"] = cleaned["metadata"]["has_attachments"]
-                elif doc_type == "deal":
-                    if "metadata" in cleaned and "deal_type" in cleaned["metadata"]:
-                        result["deal_type"] = cleaned["metadata"]["deal_type"]
-                
-                return result
-            
+        except KeyError as e:
+            raise ValueError(f"Missing processor for document type {doc_type}") from e
         except Exception as e:
             logger.error(f"Document processing failed: {str(e)}")
             raise
         finally:
             await self._cleanup_connections()
 
-    async def _cleanup_connections(self):
-        """Clean up all database connections"""
-        if hasattr(self.mongo, 'client'):
-            self.mongo.client.close()
-        if hasattr(self.es, 'client'):
-            await self.es.client.close()
-        if hasattr(self.qdrant, 'client'):
-            await self.qdrant.client.close()
-    def _generate_chunks_for_type(self, 
-                                  document: Dict[str, Any], 
-                                  chunker: Any, 
-                                  doc_type: str) -> List[Tuple[Dict[str, Any], str, List[float]]]:
-        """Generate chunks based on document type structure"""
+    def _validate_components(self, doc_type: str) -> bool:
+        """Check required components exist for document type"""
+        has_ingestor = doc_type in BaseIngestor._registry['ingestor']
+        has_cleaner = doc_type in BaseCleaner._registry['cleaner']
+        return has_ingestor and has_cleaner
+
+    def _generate_chunks(self, document: Dict, chunker: BaseChunker) -> List:
+        """Generic chunk generation across document types"""
         chunks = []
-        
-        if doc_type == "contract":
-            # Contracts have clauses
-            for clause in document.get("clauses", []):
-                for text in chunker.chunk(clause["text"]):
-                    emb = compute_embedding(text, self.embedding_model)
-                    chunks.append((clause, text, emb))
-                    
-        elif doc_type == "email":
-            # Emails may have a body or content field instead of clauses
-            if "body" in document:
-                # Email with direct body field
-                for text in chunker.chunk(document["body"]):
-                    emb = compute_embedding(text, self.embedding_model)
-                    # Create a pseudo-clause for consistent handling
-                    pseudo_clause = {
-                        "id": f"{document['id']}_body",
-                        "type": "email_body",
-                        "metadata": {}
-                    }
-                    chunks.append((pseudo_clause, text, emb))
-            elif "content" in document:
-                # Email with content field
-                for text in chunker.chunk(document["content"]):
-                    emb = compute_embedding(text, self.embedding_model)
-                    pseudo_clause = {
-                        "id": f"{document['id']}_content",
-                        "type": "email_content",
-                        "metadata": {}
-                    }
-                    chunks.append((pseudo_clause, text, emb))
-            elif "clauses" in document:
-                # Email already processed into clauses
-                for clause in document["clauses"]:
-                    for text in chunker.chunk(clause["text"]):
-                        emb = compute_embedding(text, self.embedding_model)
-                        chunks.append((clause, text, emb))
-                        
-        elif doc_type == "deal":
-            # Deals may have sections or clauses
-            if "sections" in document:
-                for i, section in enumerate(document["sections"]):
-                    if isinstance(section, dict) and "content" in section:
-                        for text in chunker.chunk(section["content"]):
-                            emb = compute_embedding(text, self.embedding_model)
-                            pseudo_clause = {
-                                "id": f"{document['id']}_section_{i}",
-                                "type": section.get("type", "deal_section"),
-                                "metadata": {
-                                    "section_title": section.get("title", f"Section {i+1}")
-                                }
-                            }
-                            chunks.append((pseudo_clause, text, emb))
-            elif "clauses" in document:
-                # Deal already processed into clauses
-                for clause in document["clauses"]:
-                    for text in chunker.chunk(clause["text"]):
-                        emb = compute_embedding(text, self.embedding_model)
-                        chunks.append((clause, text, emb))
-            elif "terms" in document and isinstance(document["terms"], list):
-                # Deal with terms structure
-                for i, term in enumerate(document["terms"]):
-                    if isinstance(term, dict) and "description" in term:
-                        for text in chunker.chunk(term["description"]):
-                            emb = compute_embedding(text, self.embedding_model)
-                            pseudo_clause = {
-                                "id": f"{document['id']}_term_{i}",
-                                "type": "deal_term",
-                                "metadata": {
-                                    "term_name": term.get("name", f"Term {i+1}")
-                                }
-                            }
-                            chunks.append((pseudo_clause, text, emb))
-                            
+        content_sources = [
+            ("clauses", "text"),
+            ("sections", "content"),
+            ("body", None),
+            ("content", None)
+        ]
+
+        for source_field, text_field in content_sources:
+            if source := document.get(source_field):
+                for item in self._iter_content_items(source, text_field):
+                    for chunk_text in chunker.chunk(item["text"]):
+                        chunks.append({
+                            "source": source_field,
+                            "text": chunk_text,
+                            "metadata": item.get("metadata", {})
+                        })
+
         return chunks
-    
+
+    def _iter_content_items(self, source, text_field: Optional[str]):
+        """Yield text content from various document structures"""
+        if isinstance(source, list):
+            for item in source:
+                if text_field:
+                    yield {"text": item.get(text_field, ""), "metadata": item.get("metadata", {})}
+                else:
+                    yield {"text": str(item), "metadata": {}}
+        elif isinstance(source, dict):
+            yield {"text": source.get(text_field, "") if text_field else str(source), "metadata": {}}
+        else:
+            yield {"text": str(source), "metadata": {}}
+
     async def _persist_document(self, document: Dict[str, Any]):
-        """Store document in MongoDB and Elasticsearch"""
-        # MongoDB - main document storage
-        # Ensure async connections
-        await self.mongo.client.admin.command('ping')
-        await self.es.client.info()
+        """Store document in databases"""
+        # MongoDB
+        inserted_id = await self.mongo.insert_document(document)
+        logger.debug(f"Inserted MongoDB document: {inserted_id}")
         
-        # MongoDB - main document storage
-        inserted_id = await self.mongo.insert_contract(document)
-        logger.debug("Inserted MongoDB ID: %s", inserted_id)
+        # Elasticsearch
+        es_response = await self.es.index_document(document)
+        logger.debug(f"Elasticsearch response: {es_response}")
+
+    async def _store_embeddings(self, document: Dict[str, Any], chunks: List):
+        """Store chunks in vector database"""
+        doc_id = document["id"]
+        doc_title = document.get("title", "Untitled Document")
+        doc_type = document["metadata"]["document_type"]
+        doc_metadata = document.get("metadata", {})
+
+        for chunk in chunks:
         
-        # Elasticsearch - searchable content
-        es_doc = document.copy()
-        es_doc.pop("_id", None)
-        es_response = await self.es.index_contract(es_doc)
-        logger.debug("ES response: %s", es_response)
-        
-    async def _store_embeddings(self, 
-                               document: Dict[str, Any], 
-                               chunks: List[Tuple[Dict[str, Any], str, List[float]]], 
-                               doc_type: str):
-        """Store embeddings in vector database"""
-        for clause, text, emb in chunks:
-            # Get metadata from the document and clause
-            doc_metadata = document.get("metadata", {})
-            clause_metadata = clause.get("metadata", {})
-            
-            # Combine metadata, with clause metadata taking precedence
-            combined_metadata = {**doc_metadata, **clause_metadata}
-            
-            # Add document type to metadata
-            combined_metadata["document_type"] = doc_type
-            
+            combined_metadata = {
+            **doc_metadata,
+            **chunk.get("metadata", {})
+            }   
+            embedding = compute_embedding(chunk["text"], self.embedding_model)
             await self.qdrant.store_embedding(
-                contract_id=document["id"],
-                contract_title=document.get("title", f"Untitled {doc_type.title()}"),
-                clause_id=clause["id"],
-                clause_type=clause.get("type", "generic"),
-                content=text,
-                metadata=combined_metadata,
-                embedding=emb
-            )
+                document_id=document["id"],
+                document_title=document.get("title", "Untitled"),
+                chunk_id=f"{document['id']}_{hash(chunk['text'])}",
+                chunk_type=chunk["source"],
+                content=chunk["text"],
+                document_type=document["metadata"]["document_type"],
+                metadata=combined_metadata,  # Now includes document-level fields
+                embedding=compute_embedding(chunk["text"], self.embedding_model)
+                )
+
+    def _format_result(self, document: Dict, doc_type: str, chunks: List) -> Dict:
+        """Create standardized result format"""
+        result = {
+            "id": document["id"],
+            "title": document.get("title", f"Untitled {doc_type.title()}"),
+            "document_type": doc_type,
+            "status": "indexed",
+            "chunks_processed": len(chunks)
+        }
+
+        # Add type-specific metadata
+        metadata = document.get("metadata", {})
+        result.update({
+            k: metadata[k] 
+            for k in ["contract_type", "deal_type", "has_attachments"]
+            if k in metadata
+        })
+
+        return result
+
+    async def _cleanup_connections(self):
+        """Close database connections"""
+        await self.es.client.close()
+        self.qdrant.client.close()
 
 === End of ./core/pipeline/orchestrator.py ===
 
@@ -2423,6 +2658,28 @@ class PDFProcessor:
 === End of ./core/pipeline/preprocessing/pdf_processor.py ===
 
 
+=== File: ./core/pipeline/__init__.py ===
+# Import all components to trigger registration
+
+
+
+from .ingestion.contract import ContractIngestor
+from .ingestion.email import EmailIngestor
+from .ingestion.deal import DealIngestor
+from .ingestion.recap import RecapIngestor
+
+from .cleaning.contract import ContractCleaner
+from .cleaning.email import EmailCleaner
+from .cleaning.deal import DealCleaner
+from .cleaning.recap import RecapCleaner
+
+from .chunking.contract import ContractChunker
+from .chunking.email import EmailChunker
+from .chunking.deal import DealChunker
+
+=== End of ./core/pipeline/__init__.py ===
+
+
 === File: ./core/query_engine/helpers.py ===
 from typing import List, Dict 
 
@@ -2512,63 +2769,110 @@ class QueryClassifier:
         self.cache_ttl = 3600  # 1 hour TTL
         self.cache_timestamps = {}
 
-    async def classify(self, query: str) -> str:
+    # Update the query_classifier.py file
+
+    async def classify(self, query: str) -> dict:
+        """
+        Classifies the query type and detects document types mentioned.
+        
+        Returns:
+            Dict with query_type and detected document types
+        """
         # Check cache and TTL
         if query in self.cache:
             timestamp = self.cache_timestamps.get(query, 0)
             if time.time() - timestamp < self.cache_ttl:
                 return self.cache[query]
         
-        # Fallback classification in case API fails
-        fallback = self._heuristic_classify(query)
+        # Basic query type classification
+        query_type = self._heuristic_classify(query)
         
-        max_retries = 3
-        retry_delay = 1.0
+        # Default all document types
+        doc_types = self._detect_document_types(query)
         
-        for attempt in range(max_retries):
-            try:
-                response = await self.client.chat.completions.create(
-                    #model="gpt-3.5-turbo",
-                    model="local-model",
-                    messages=[{
-                        "role": "system",
-                        "content": """Classify legal contract search queries. Respond with ONE word:
-                        - 'structured' for exact filters/terms (e.g., "contracts with effective date after 2023")
-                        - 'semantic' for conceptual/meaning-based (e.g., "liability clauses protecting against data breaches")
-                        - 'hybrid' for mixed queries (e.g., "confidentiality provisions in NDAs signed after January")"""
-                    }, {
-                        "role": "user",
-                        "content": query
-                    }],
-                    temperature=0.1,
-                    max_tokens=10
-                )
+        try:
+            response = await self.client.chat.completions.create(
+                model="local-model",
+                messages=[{
+                    "role": "system",
+                    "content": """Classify legal document search queries. Respond with JSON:
+                    {
+                        "type": "structured|semantic|hybrid",
+                        "doc_types": ["contract", "email", "deal", "recap"]  # Include only relevant types
+                    }
+                    
+                    Detect document types from these patterns:
+                    - Email: 'email', 'inbox', 'attachment', 'sent', 'received', 'message'
+                    - Deal: 'deal', 'volume', 'price', 'barrel', 'lease', 'agreement'
+                    - Recap: 'meeting', 'minutes', 'action items', 'decisions', 'recap'  
+                    - Contract: 'contract', 'clause', 'nda', 'terms', 'provision'
+                    """
+                }, {
+                    "role": "user",
+                    "content": query
+                }],
+                temperature=0.1,
+                max_tokens=100
+            )
 
-                classification = response.choices[0].message.content.lower().strip()
-                valid = {"structured", "semantic", "hybrid"}
-                result = classification if classification in valid else fallback
+            try:
+                # Try to parse as JSON
+                import json
+                result = json.loads(response.choices[0].message.content)
                 
-                # Update cache
-                self.cache[query] = result
-                self.cache_timestamps[query] = time.time()
-                return result
+                if isinstance(result, dict):
+                    if "type" in result:
+                        query_type = result["type"] 
+                    if "doc_types" in result and isinstance(result["doc_types"], list):
+                        doc_types = result["doc_types"]
+            except:
+                # If JSON parsing fails, use fallback
+                pass
+            
+            result = {
+                "query_type": query_type,
+                "doc_types": doc_types
+            }
+            
+            # Update cache
+            self.cache[query] = result
+            self.cache_timestamps[query] = time.time()
+            return result
                 
-            except RateLimitError:
-                logger.warning(f"Rate limit exceeded on attempt {attempt+1}, retrying in {retry_delay}s")
-                await asyncio.sleep(retry_delay)
-                retry_delay *= 2  # Exponential backoff
-                
-            except APIError as e:
-                logger.error(f"OpenAI API error: {str(e)}")
-                return fallback
-                
-            except Exception as e:
-                logger.error(f"Classification failed: {str(e)}")
-                return fallback
+        except Exception as e:
+            logger.error(f"Classification failed: {str(e)}")
+            return {
+                "query_type": query_type,
+                "doc_types": doc_types
+            }
+
+    def _detect_document_types(self, query: str) -> List[str]:
+        """Detect document types mentioned in the query"""
+        query = query.lower()
+        types = []
         
-        # If all retries failed
-        return fallback
-    
+        # Email markers
+        if any(term in query for term in ['email', 'inbox', 'message', 'sent', 'received']):
+            types.append('email')
+            
+        # Deal markers
+        if any(term in query for term in ['deal', 'volume', 'price', 'barrel', 'lease']):
+            types.append('deal')
+            
+        # Recap markers
+        if any(term in query for term in ['meeting', 'minutes', 'recap', 'action item']):
+            types.append('recap')
+            
+        # Contract markers
+        if any(term in query for term in ['contract', 'clause', 'nda', 'agreement', 'provision']):
+            types.append('contract')
+            
+        # Return all types if none detected
+        if not types:
+            return ['contract', 'email', 'deal', 'recap']
+            
+        return types
+
     def _heuristic_classify(self, query: str) -> str:
         """Fallback classification using heuristics."""
         structured_keywords = [
@@ -2593,7 +2897,7 @@ class QueryClassifier:
 
 
 === File: ./core/query_engine/search.py ===
-# File: clm_system/core/queryEngine/search.py
+# File: clm_system/core/query_engine/search.py
 import asyncio
 import logging
 import time
@@ -2641,26 +2945,77 @@ class QueryRouter:
             top_k = self.top_k
         
         # Determine query type using classifier
-        query_type = await self.classifier.classify(query)
+        classification = await self.classifier.classify(query)
+        query_type = classification.get('query_type', 'semantic')
         logger.info(f"Query classified as {query_type}: {query}")
         
-        results = []
+        # Convert document_type filter to list if needed
+        if filters and 'metadata.document_type' in filters:
+            doc_types = [filters['metadata.document_type']]
+        else:
+            doc_types = classification.get('doc_types', ['contract', 'email', 'recap', 'deal'])
+        
+        # Parallel searches per document type
+        search_tasks = []
+        for doc_type in doc_types:
+            task = self._search_by_type(query, query_type, filters, top_k, doc_type)
+            search_tasks.append(task)
+        
+        # Gather results from all searches
+        type_results = await asyncio.gather(*search_tasks)
+        
+        # Merge results from different document types
+        results = self._merge_results(type_results, top_k)
+        
+        execution_time = (time.time() - start_time) * 1000  # Convert to milliseconds
+        
+        return {
+            "query": query,
+            "total_results": len(results),
+            "results": results,
+            "metadata": {
+                "query_type": query_type,
+                "filters_applied": filters is not None,
+                "document_types": doc_types
+            },
+            "execution_time_ms": execution_time
+        }
+    
+    async def _search_by_type(self, query: str, query_type: str, 
+                             filters: Optional[Dict[str, Any]], 
+                             top_k: int, doc_type: str) -> List[Dict[str, Any]]:
+        """
+        Perform search for a specific document type.
+        
+        Args:
+            query: Search query
+            query_type: Classification of query (structured, semantic, hybrid)
+            filters: Metadata filters
+            top_k: Number of results to return
+            doc_type: Document type to search for
+            
+        Returns:
+            List of search results for this document type
+        """
+        # Add document type to filters
+        type_filters = filters.copy() if filters else {}
+        type_filters["metadata.document_type"] = doc_type
         
         if query_type == "structured":
             # Structured search using Elasticsearch
-            results = await self.es_client.search(query, filters, top_k)
+            results = await self.es_client.search(query, type_filters, top_k)
         elif query_type == "semantic":
             # Semantic search using Qdrant
             query_embedding = compute_embedding(query, self.embedding_model)
-            results = await self.qdrant_client.search(query_embedding, filters, top_k)
+            results = await self.qdrant_client.search(query_embedding, type_filters, top_k)
         else:  # hybrid
             # Compute embedding here before passing to search
             query_embedding = compute_embedding(query, self.embedding_model)
             
             # Run searches in parallel
             es_results, qdrant_results = await asyncio.gather(
-                self.es_client.search(query, filters, top_k * 2),
-                self.qdrant_client.search(query_embedding, filters, top_k * 2)
+                self.es_client.search(query, type_filters, top_k * 2),
+                self.qdrant_client.search(query_embedding, type_filters, top_k * 2)
             )
             
             # Combine results using RRF
@@ -2672,49 +3027,35 @@ class QueryRouter:
                 weight_b=0.6   # Vector search weight
             )[:top_k]
         
-        execution_time = (time.time() - start_time) * 1000  # Convert to milliseconds
+        # Add document type to results metadata
+        for result in results:
+            if "metadata" not in result:
+                result["metadata"] = {}
+            result["metadata"]["document_type"] = doc_type
         
-        return {
-            "query": query,
-            "total_results": len(results),
-            "results": results,
-            "metadata": {
-                "query_type": query_type,
-                "filters_applied": filters is not None
-            },
-            "execution_time_ms": execution_time
-        }
+        return results
     
-    # This method is no longer needed since we're using the QueryClassifier
-    # It can be removed or kept as a fallback
-    def _heuristic_classify(self, query: str) -> str:
+    def _merge_results(self, type_results: List[List[Dict[str, Any]]], top_k: int) -> List[Dict[str, Any]]:
         """
-        Classifies a query as structured, semantic, or hybrid using heuristics.
-        Used as a fallback when classifier is unavailable.
+        Merge results from different document types, sorting by relevance.
         
         Args:
-            query: The user's search query
+            type_results: List of result lists from different document types
+            top_k: Maximum number of results to return
             
         Returns:
-            String indicating query type: "structured", "semantic", or "hybrid"
+            Combined and sorted list of results
         """
-        structured_keywords = [
-            "date:", "type:", "status:", "party:", "before:", "after:",
-            "contract type", "effective date", "expiration date", "status is"
-        ]
+        # Flatten results from all document types
+        all_results = []
+        for results in type_results:
+            all_results.extend(results)
         
-        has_structured = any(keyword in query.lower() for keyword in structured_keywords)
+        # Sort by relevance score
+        sorted_results = sorted(all_results, key=lambda x: -x["relevance_score"])
         
-        if len(query.split()) <= 3 and not has_structured:
-            return "semantic"
-        
-        if len(query.split()) > 3 and has_structured:
-            return "hybrid"
-        
-        if has_structured:
-            return "structured"
-        
-        return "semantic"
+        # Return top-k
+        return sorted_results[:top_k]
 
 === End of ./core/query_engine/search.py ===
 
@@ -2863,10 +3204,17 @@ if __name__ == "__main__":
 
 === File: ./schemas/schemas.py ===
 # File: clm_system/api/schemas.py
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, EmailStr
 from typing import Dict, List, Optional, Any, Union
 from datetime import datetime
-from pydantic import validator
+import uuid
+from dateutil import parser
+
+class BaseMetadata(BaseModel):
+    document_type: str
+    tags: List[str] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 class ClauseBase(BaseModel):
     """Base schema for contract clauses."""
@@ -2877,14 +3225,13 @@ class ClauseBase(BaseModel):
     position: Optional[int] = None
     metadata: Optional[Dict[str, Any]] = Field(default_factory=dict)
 
-
-class ContractMetadata(BaseModel):
+class ContractMetadata(BaseMetadata):
+    document_type: str = "contract"
     contract_type: str
     effective_date: Optional[datetime] = None
     expiration_date: Optional[datetime] = None
     parties: List[Dict[str, str]] = Field(default_factory=list)
     status: Optional[str] = None
-    tags: List[str] = Field(default_factory=list)
 
     @validator('effective_date', 'expiration_date', pre=True)
     def parse_dates(cls, value):
@@ -2895,12 +3242,56 @@ class ContractMetadata(BaseModel):
                 return None
         return value
 
+class EmailMetadata(BaseMetadata):
+    document_type: str = "email"
+    from_address: EmailStr
+    to: List[EmailStr]
+    cc: List[EmailStr] = []
+    bcc: List[EmailStr] = []
+    subject: str
+    has_attachments: bool = False
+    sent_date: datetime
+
+class DealMetadata(BaseMetadata):
+    document_type: str = "deal"
+    deal_type: str  # (e.g., "oil_lease", "supply_contract")
+    effective_date: datetime
+    expiration_date: datetime
+    parties: List[Dict[str, str]]
+    volume: str
+    price_per_unit: float
+
+class RecapMetadata(BaseMetadata):
+    document_type: str = "recap"
+    meeting_date: datetime
+    participants: List[str]
+    decisions: List[str]
+    action_items: List[str]
+
 class ContractCreate(BaseModel):
     """Schema for creating a new contract."""
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     title: str
     metadata: ContractMetadata
     clauses: List[ClauseBase]
 
+class EmailCreate(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    metadata: EmailMetadata
+    content: str
+    attachments: List[Dict] = []
+
+class DealCreate(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    metadata: DealMetadata
+    clauses: List[ClauseBase]
+    financial_terms: Dict[str, Any]
+
+class RecapCreate(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    metadata: RecapMetadata
+    summary: str
+    key_points: List[str]
 
 class ContractResponse(BaseModel):
     """Response schema for contract operations."""
@@ -2912,6 +3303,36 @@ class ContractResponse(BaseModel):
     clauses_count: int
     status: str = "indexed"
 
+class EmailResponse(BaseModel):
+    """Response schema for email operations."""
+    id: str
+    title: str  # Using subject as title
+    metadata: EmailMetadata
+    created_at: datetime
+    updated_at: datetime
+    has_attachments: bool
+    status: str = "indexed"
+
+class DealResponse(BaseModel):
+    """Response schema for deal operations."""
+    id: str
+    title: str
+    metadata: DealMetadata
+    created_at: datetime
+    updated_at: datetime
+    clauses_count: int
+    deal_type: str
+    status: str = "indexed"
+
+class RecapResponse(BaseModel):
+    """Response schema for recap operations."""
+    id: str
+    title: str
+    metadata: RecapMetadata
+    created_at: datetime
+    updated_at: datetime
+    participants: List[str]
+    status: str = "indexed"
 
 class QueryRequest(BaseModel):
     """Schema for search queries."""
@@ -2919,27 +3340,50 @@ class QueryRequest(BaseModel):
     filters: Optional[Dict[str, Any]] = None
     top_k: Optional[int] = 5
 
-
-class ClauseSearchResult(BaseModel):
-    """Result schema for clause search."""
-    clause_id: str
-    contract_id: str
-    contract_title: str
-    clause_type: str
-    clause_title: Optional[str] = None
+class SearchResultBase(BaseModel):
+    """Base result schema for search."""
+    document_id: str
+    document_title: str
     content: str
     relevance_score: float
     metadata: Optional[Dict[str, Any]] = None
 
+class ClauseSearchResult(SearchResultBase):
+    """Result schema for clause search."""
+    clause_id: str
+    contract_id: str = Field(alias="document_id")
+    contract_title: str = Field(alias="document_title")
+    clause_type: str
+    clause_title: Optional[str] = None
+
+class EmailSearchResult(SearchResultBase):
+    """Result schema for email search."""
+    email_id: str = Field(alias="document_id")
+    email_subject: str = Field(alias="document_title")
+    from_address: Optional[str] = None
+    to_addresses: Optional[List[str]] = None
+
+class DealSearchResult(SearchResultBase):
+    """Result schema for deal search."""
+    deal_id: str = Field(alias="document_id")
+    deal_title: str = Field(alias="document_title")
+    deal_type: Optional[str] = None
+    price_per_unit: Optional[float] = None
+
+class RecapSearchResult(SearchResultBase):
+    """Result schema for recap search."""
+    recap_id: str = Field(alias="document_id") 
+    recap_title: str = Field(alias="document_title")
+    meeting_date: Optional[datetime] = None
+    participants: Optional[List[str]] = None
 
 class QueryResponse(BaseModel):
     """Response schema for search queries."""
     query: str
     total_results: int
-    results: List[ClauseSearchResult]
+    results: List[Union[ClauseSearchResult, EmailSearchResult, DealSearchResult, RecapSearchResult]]
     metadata: Optional[Dict[str, Any]] = None
     execution_time_ms: float
-
 
 === End of ./schemas/schemas.py ===
 
@@ -3053,6 +3497,173 @@ async def test_route_query():
         assert mock_qdrant_instance.search.called
 
 === End of ./test.py ===
+
+
+=== File: ./test_email_workflow.py ===
+import pytest
+import asyncio
+import logging
+from typing import Dict, Any
+from datetime import datetime
+from clm_system.core.database.mongodb_client import MongoDBClient
+from clm_system.core.database.qdrant_client import QdrantClient
+from clm_system.core.pipeline.orchestrator import PipelineService
+from clm_system.core.utils.embeddings import compute_embedding
+from qdrant_client import models
+
+# Configure logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
+
+@pytest.fixture
+def sample_email():
+    return {
+        "id": "email_123",
+        "title": "Updated Oil Shipment Schedule",
+        "metadata": {
+            "document_type": "email",
+            "from_address": "logistics@oilcorp.com",
+            "to": ["procurement@client.com", "manager@client.com"],
+            "cc": ["archive@oilcorp.com"],
+            "subject": "Revised Crude Oil Delivery Schedule",
+            "sent_date": datetime(2023, 3, 15, 14, 30),
+            "tags": ["urgent", "shipment"]
+        },
+        "attachments": [  # Add this key
+            {"filename": "bol_revised.pdf"},
+            {"filename": "customs_docs.zip"}
+        ],
+        "clauses": [
+            {
+                "id": "body",
+                "type": "email_body",
+                "text": """Dear Procurement Team,
+                
+We're updating the March crude oil shipment schedule:
+- Tanker OC_Voyager delayed until March 25th
+- Increased volume on OC_Explorer to 500,000 barrels
+- New pricing at $78/barrel for Brent crude
+
+Attached find the revised Bill of Lading and customs documentation.
+
+Best regards,
+OilCorp Logistics Team""",
+                "position": 0,
+                "metadata": {
+                    "attachment_names": ["bol_revised.pdf", "customs_docs.zip"]
+                }
+            }
+        ]
+    }
+@pytest.mark.asyncio
+async def test_email_workflow(sample_email):
+    """End-to-end test of email processing and search"""
+    
+    # Initialize clients
+    mongo = MongoDBClient()
+    qdrant = QdrantClient()
+    pipeline = PipelineService()
+
+    # --- Phase 1: Ingestion ---
+    # Process email through pipeline
+    processed_email = await pipeline.process_document(sample_email)
+    
+    # Verify MongoDB insertion
+    db_email = await mongo.get_document("email_123")
+    assert db_email is not None
+    assert db_email["metadata"]["document_type"] == "email"
+    assert db_email["metadata"]["subject"] == "Revised Crude Oil Delivery Schedule"
+    assert len(db_email["clauses"]) == 1
+    
+    # --- Phase 2: Embedding Storage ---
+    # Verify points are stored in Qdrant
+    stored_points = await qdrant.scroll("email_123")
+    assert len(stored_points) > 0, "No points stored in Qdrant for email_123"
+    logger.info(f"Found {len(stored_points)} points in Qdrant for email_123")
+    
+    # Debug point structure
+    #debug_info = await qdrant.debug_points("email_123")
+    #logger.debug(f"Point details:\n{debug_info}")
+    
+    
+    # After verifying points are stored
+    logger.info(f"Found {len(stored_points)} points in Qdrant for email_123")
+
+    # Add debugging output
+    for point in stored_points:
+        logger.info(f"Document ID: {point['document_id']}")
+        logger.info(f"Content: {point['content'][:100]}...")
+        logger.info(f"Metadata: {point['metadata']}")
+    
+    # --- Phase 3: Search Verification ---
+    test_query = "Current oil shipment prices and schedules"
+    query_embedding = compute_embedding(test_query)
+
+    # Search across all document types
+    search_results = await qdrant.search(
+        embedding=query_embedding,
+        filters={
+            "document_type": "email",  # Top-level field
+            "metadata.has_attachments": True  # Nested under metadata
+        },
+        top_k=3
+    )
+
+    # If still no results, try broader search
+    if not search_results:
+        backup_results = await qdrant.search(
+            embedding=query_embedding,
+            filters={"document_type": "email"},
+            top_k=3
+        )
+        logger.info(f"Backup search results: {backup_results}")
+
+    assert len(search_results) > 0, "No search results returned from Qdrant"
+    
+    # Verify email-specific metadata
+    email_result = next(
+        (r for r in search_results if r["document_id"] == "email_123"),
+        None
+    )
+    
+    assert email_result is not None, "Email result not found in search results"
+    assert email_result["document_type"] == "email"
+    assert "oil shipment" in email_result["content"].lower()
+    assert email_result["metadata"].get("attachment_names") == ["bol_revised.pdf", "customs_docs.zip"]
+    
+    # --- Phase 4: Temporal Filtering ---
+    # Date range search
+    date_filtered = await mongo.get_documents(
+        filters={
+            "metadata.document_type": "email",
+            "metadata.sent_date": {
+                "$gte": datetime(2023, 3, 1),
+                "$lte": datetime(2023, 3, 31)
+            }
+        },
+        sort=[("metadata.sent_date", -1)]
+    )
+    
+    assert len(date_filtered) >= 1
+    assert date_filtered[0]["id"] == "email_123"
+    
+    # --- Phase 5: Cleanup ---
+    await mongo.documents_collection.delete_one({"id": "email_123"})
+    await qdrant.client.delete(
+        collection_name="document_chunks",
+        points_selector=models.FilterSelector(
+            filter=models.Filter(
+                must=[
+                    models.FieldCondition(
+                        key="document_id",
+                        match=models.MatchValue(value="email_123")
+                    )
+                ]
+            )
+        )
+    )
+
+=== End of ./test_email_workflow.py ===
 
 
 === File: ./__init__.py ===

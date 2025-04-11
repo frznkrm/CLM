@@ -1,0 +1,12 @@
+{
+    "title": "Re: Oil Contract Negotiation",
+    "metadata": {
+      "document_type": "email",
+      "from": "john.doe@oilcorp.com",
+      "to": ["jane.smith@energyco.com"],
+      "cc": ["bob.brown@oilcorp.com"],
+      "bcc": [],
+      "date": "2023-10-01T10:00:00Z"
+    },
+    "body": "Dear Jane,\n\nThank you for the draft contract. I propose adjusting the payment terms to 30 days net and narrowing the liability clause to exclude indirect damages.\n\nCan we discuss this in our next meeting?\n\nBest regards,\nJohn"
+  }

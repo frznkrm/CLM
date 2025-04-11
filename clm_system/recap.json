@@ -1,0 +1,21 @@
+{
+    "title": "Meeting Recap: Oil Supply Deal Negotiation",
+    "metadata": {
+      "document_type": "recap",
+      "recap_type": "meeting",
+      "meeting_date": "2023-10-05T14:00:00Z",
+      "author": "Alice Johnson",
+      "participants": ["John Doe", "Jane Smith", "Bob Brown"],
+      "related_documents": ["deal-123"]
+    },
+    "sections": [
+      {
+        "heading": "Discussion Points",
+        "content": "1. Adjusted payment terms to 30 days.\n2. Narrowed liability clause scope."
+      },
+      {
+        "heading": "Action Items",
+        "content": "1. John to revise contract draft.\n2. Jane to review by Oct 10."
+      }
+    ]
+  }

@@ -1,11 +1,10 @@
 # clm_system/core/pipeline/ingestion/contract.py
 import uuid
 from datetime import datetime
-from .base import IngestorABC
-
-class ContractIngestor(IngestorABC):
-    def ingest(self, raw: dict) -> dict:
-        
+from ..base import BaseIngestor
+from typing import Dict, Any
+class ContractIngestor(BaseIngestor, doc_type="contract"):
+    def process(self, raw: Dict[str, Any]) -> Dict[str, Any]:
         data = raw.copy()
         data.setdefault("id", str(uuid.uuid4()))
         now = datetime.utcnow()

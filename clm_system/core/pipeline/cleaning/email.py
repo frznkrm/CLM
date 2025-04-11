@@ -2,10 +2,10 @@
 import re
 from html import unescape
 from bs4 import BeautifulSoup
-from .base import CleanerABC
+from ..base import BaseCleaner
 
-class EmailCleaner(CleanerABC):
-    def clean(self, data: dict) -> dict:
+class EmailCleaner(BaseCleaner, doc_type="email"):
+    def process(self, data: dict) -> dict:
         """
         Clean and normalize email data.
         

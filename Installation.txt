@@ -18,3 +18,4 @@ docker run -d \
   poetry add pymongo[srv]  # Ensure async MongoDB driver
 poetry add "spacy>=3.0,<4.0"
 python -m spacy download en_core_web_sm
+poetry add motor

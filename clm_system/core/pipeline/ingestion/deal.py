@@ -1,10 +1,10 @@
 # clm_system/core/pipeline/ingestion/deal.py
 import uuid
 from datetime import datetime
-from .base import IngestorABC
+from ..base import BaseIngestor
 
-class DealIngestor(IngestorABC):
-    def ingest(self, raw: dict) -> dict:
+class DealIngestor(BaseIngestor, doc_type="deal"):
+    def process(self, raw: dict) -> dict:
         """
         Process raw oil industry deal data into a standardized format.
         

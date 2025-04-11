@@ -1,9 +1,9 @@
 # clm_system/core/pipeline/cleaning/deal.py
 import re
-from .base import CleanerABC
+from ..base import BaseCleaner
 
-class DealCleaner(CleanerABC):
-    def clean(self, data: dict) -> dict:
+class DealCleaner(BaseCleaner, doc_type="deal"):
+    def process(self, data: dict) -> dict:
         """
         Clean and normalize oil industry deal data.
         

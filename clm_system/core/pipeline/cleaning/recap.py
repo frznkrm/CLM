@@ -1,9 +1,9 @@
 # clm_system/core/pipeline/cleaning/recap.py
 import re
-from .base import CleanerABC
+from ..base import BaseCleaner
 
-class RecapCleaner(CleanerABC):
-    def clean(self, data: dict) -> dict:
+class RecapCleaner(BaseCleaner, doc_type="recap"):
+    def process(self, data: dict) -> dict:
         """
         Clean and normalize recap/summary data.
         

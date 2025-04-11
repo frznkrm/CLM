@@ -1,10 +1,10 @@
 # clm_system/core/pipeline/chunking/deal.py
 from typing import List
 import re
-from .base import ChunkerABC
+from ..base import BaseChunker
 from clm_system.config import settings
-
-class DealChunker(ChunkerABC):
+from typing import Dict, Any
+class DealChunker(BaseChunker, doc_type="deal"):
     """Chunker for oil industry deal documents."""
     
     def chunk(self, text: str) -> List[str]:
@@ -86,3 +86,5 @@ class DealChunker(ChunkerABC):
                 sections.append(section_text)
         
         return sections
+    def process(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        return data  # Implement if additional processing is needed

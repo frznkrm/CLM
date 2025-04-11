@@ -2,10 +2,10 @@
 import uuid
 from datetime import datetime
 from email.utils import parsedate_to_datetime
-from .base import IngestorABC
+from ..base import BaseIngestor
 
-class EmailIngestor(IngestorABC):
-    def ingest(self, raw: dict) -> dict:
+class EmailIngestor(BaseIngestor, doc_type="email"):
+    def process(self, raw: dict) -> dict:
         """
         Process raw email data into a standardized format.
         

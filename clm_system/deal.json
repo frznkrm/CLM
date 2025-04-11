@@ -1,0 +1,22 @@
+{
+    "title": "Oil Supply Deal 2023",
+    "metadata": {
+      "document_type": "deal",
+      "deal_type": "supply",
+      "volume": "10000 bbl",
+      "price_per_unit": 50.0,
+      "total_value": 500000.0,
+      "location": "North Sea",
+      "counterparties": ["OilCorp", "EnergyCo"]
+    },
+    "sections": [
+      {
+        "heading": "Deal Terms",
+        "content": "This deal involves the supply of 10,000 barrels of crude oil from the North Sea."
+      },
+      {
+        "heading": "Pricing",
+        "content": "The price per barrel is $50, adjustable based on Brent crude index."
+      }
+    ]
+  }

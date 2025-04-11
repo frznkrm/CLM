@@ -1,10 +1,10 @@
 # clm_system/core/pipeline/chunking/email.py
 from typing import List
 import re
-from .base import ChunkerABC
+from ..base import BaseChunker
 from clm_system.config import settings
-
-class EmailChunker(ChunkerABC):
+from typing import Dict, Any
+class EmailChunker(BaseChunker, doc_type="email"):
     """Chunker for email documents."""
     
     def chunk(self, text: str) -> List[str]:
@@ -110,3 +110,5 @@ class EmailChunker(ChunkerABC):
             return [text]
             
         return parts
+    def process(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        return data  # Implement if additional processing is needed
