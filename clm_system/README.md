@@ -1,185 +1,176 @@
 # CLM Smart Search System
 
-A Contract Lifecycle Management (CLM) system with advanced search capabilities, combining structured and semantic search to intelligently find relevant contract clauses and information.
+A Contract Lifecycle Management (CLM) system with advanced search capabilities, combining structured and semantic search to intelligently find relevant information across multiple document types: contracts, emails, deals, and meeting recaps.
 
 ## System Overview
 
-The CLM Smart Search system is designed to ingest, process, and search contract documents. It features:
+The CLM Smart Search system is designed to ingest, process, and search various document types commonly found in legal and business contexts. It features:
 
+- **Multi-Document Support**: Handles contracts, emails, oil industry deals, and meeting recaps
 - **Dual-Mode Search**: Combines traditional structured search with semantic (meaning-based) vector search
-- **Query Intelligence**: Automatically classifies queries to route them to the appropriate search engine
-- **Full Pipeline**: Handles contract ingestion, normalization, cleaning, chunking, embedding, and indexing
+- **Query Intelligence**: Automatically classifies queries and detects document types to route them to the appropriate search engine
+- **Full Pipeline**: Manages document ingestion, normalization, cleaning, chunking, embedding, and indexing
 - **Multiple Data Stores**: Uses MongoDB for document storage, Elasticsearch for structured search, and Qdrant for vector search
+- **PDF Processing**: Converts PDF documents into structured JSON format for ingestion
 
 ## File and Folder Structure
 
-```
 clm_system/
 ├── api/
-│   ├── __init__.py
+│   ├── init.py
 │   └── routes.py           # FastAPI API endpoints
 ├── core/
-│   ├── __init__.py
+│   ├── init.py
 │   ├── database/           # Database clients
-│   │   ├── __init__.py
 │   │   ├── elasticsearch_client.py
 │   │   ├── mongodb_client.py
 │   │   └── qdrant_client.py
-│   ├── pipeline/           # Contract processing pipeline
-│   │   ├── __init__.py
+│   ├── pipeline/           # Document processing pipeline
 │   │   ├── base.py
 │   │   ├── chunking/
 │   │   │   ├── base.py
-│   │   │   └── contract.py
+│   │   │   ├── contract.py
+│   │   │   ├── deal.py
+│   │   │   ├── email.py
 │   │   ├── cleaning/
 │   │   │   ├── base.py
-│   │   │   └── contract.py
+│   │   │   ├── contract.py
+│   │   │   ├── deal.py
+│   │   │   ├── email.py
+│   │   │   ├── recap.py
 │   │   ├── ingestion/
 │   │   │   ├── base.py
-│   │   │   └── contract.py
+│   │   │   ├── contract.py
+│   │   │   ├── deal.py
+│   │   │   ├── email.py
+│   │   │   ├── recap.py
 │   │   ├── orchestrator.py
+│   │   ├── preprocessing/
+│   │   │   └── pdf_processor.py
 │   ├── query_engine/       # Search functionality
 │   │   ├── helpers.py
 │   │   ├── query_classifier.py
 │   │   └── search.py
 │   └── utils/
-│       ├── __init__.py
+│       ├── init.py
 │       └── embeddings.py
 ├── schemas/
 │   └── schemas.py         # Pydantic data models
 ├── cli.py                 # Command-line interface
 ├── config.py              # Application configuration
-└── main.py                # FastAPI application entry point
-```
+├── main.py                # FastAPI application entry point
+├── test.py                # Unit tests
+└── test_email_workflow.py # Email workflow tests
+
 
 ## Key Components
 
 ### 1. API Layer (`api/routes.py`)
 
-The API layer provides REST endpoints for contract ingestion and search:
-
-- **`POST /contracts`**: Ingests a new contract into the system
-- **`POST /search`**: Searches for contracts using structured and/or semantic search
+REST endpoints for document management and search:
+- **`POST /contracts/ingest`**: Ingests JSON-formatted documents
+- **`POST /contracts/ingest-pdf`**: Ingests PDF documents
+- **`GET /contracts/{contract_id}`**: Retrieves a document by ID
+- **`GET /contracts`**: Lists documents with filtering
+- **`POST /search`**: Searches across all document types
 
 ### 2. Data Models (`schemas/schemas.py`)
 
-Defines Pydantic models to validate and structure data:
-
-- **`ContractCreate`**: Schema for creating contracts
-- **`ContractResponse`**: Response model for contract operations
-- **`QueryRequest`**: Schema for search queries
-- **`QueryResponse`**: Response model for search results
+Pydantic models for validation:
+- **Document Types**: `ContractCreate`, `EmailCreate`, `DealCreate`, `RecapCreate`
+- **Responses**: `ContractResponse`, `EmailResponse`, `DealResponse`, `RecapResponse`
+- **Search**: `QueryRequest`, `QueryResponse`, type-specific result schemas
 
 ### 3. Database Clients (`core/database/`)
 
-Three database clients handle different aspects of data storage:
-
 #### MongoDB Client (`mongodb_client.py`)
-- Stores complete contract documents
-- Handles CRUD operations for contracts
+- Stores complete documents of all types
+- Handles CRUD operations with type-specific metadata
 
 #### Elasticsearch Client (`elasticsearch_client.py`)
-- Provides structured search capabilities 
-- Maintains an index with contract metadata and clauses
-- Creates custom mappings for efficient filterable fields
+- Structured search across all document types
+- Indexes with mappings for contracts, emails, deals, and recaps
 
 #### Qdrant Client (`qdrant_client.py`)
 - Vector database for semantic search
-- Stores embedded clause chunks for similarity search
-- Handles vector operations and collection management
+- Stores embedded chunks with type-specific metadata
 
-### 4. Contract Processing Pipeline (`core/pipeline/`)
+### 4. Document Processing Pipeline (`core/pipeline/`)
 
-The pipeline processes incoming contracts through several stages:
-
-#### Ingestion (`ingestion/contract.py`)
-- Normalizes raw contract data
+#### Ingestion (`ingestion/[type].py`)
+- Normalizes raw data for each document type
 - Assigns IDs and timestamps
 
-#### Cleaning (`cleaning/contract.py`)
-- Applies standardization and cleaning operations
-- Could handle PII scrubbing (minimal implementation in current code)
+#### Cleaning (`cleaning/[type].py`)
+- Type-specific cleaning (e.g., email subjects, deal volumes)
+- Handles standardization and minimal PII scrubbing
 
-#### Chunking (`chunking/contract.py`)
-- Splits long text into smaller chunks for embedding
-- Uses NLP to maintain sentence boundaries
+#### Chunking (`chunking/[type].py`)
+- Splits content into embeddable chunks
+- Uses type-specific strategies (e.g., email parts, deal sections)
 
 #### Orchestrator (`orchestrator.py`)
-- Coordinates the entire pipeline process
-- Manages the flow of data through each stage
-- Persists data to all databases
+- Coordinates pipeline stages
+- Routes documents to type-specific processors
+- Persists to all databases
+
+#### PDF Processor (`preprocessing/pdf_processor.py`)
+- Extracts text from PDFs
+- Structures content into JSON format
 
 ### 5. Query Engine (`core/query_engine/`)
 
-The search system intelligently handles different types of queries:
-
 #### Query Classifier (`query_classifier.py`)
-- Uses OpenAI APIs to classify queries as:
-  - **Structured**: Filter-based queries
-  - **Semantic**: Meaning-based queries
-  - **Hybrid**: Combined approach
-- Includes fallback heuristic classification 
+- Uses OpenAI API (or local model) to classify queries
+- Detects mentioned document types
+- Types: Structured, Semantic, Hybrid
 
 #### Query Router (`search.py`)
-- Routes queries to appropriate search engine
-- Executes searches against Elasticsearch or Qdrant
-- For hybrid searches, combines results using fusion algorithm
+- Routes queries based on classification
+- Executes searches per document type in parallel
+- Merges results with Reciprocal Rank Fusion (RRF)
 
 #### Search Helpers (`helpers.py`)
-- Implements Reciprocal Rank Fusion (RRF) algorithm
-- Combines and ranks results from multiple search engines
+- Implements RRF algorithm for hybrid search result combination
 
 ### 6. Utils (`core/utils/`)
 
 #### Embeddings (`embeddings.py`)
-- Manages embedding models
-- Computes text embeddings for semantic search
-- Caches model for reuse
+- Manages SentenceTransformer model
+- Computes embeddings for semantic search
 
 ### 7. Configuration (`config.py`)
-
-- Uses Pydrant to manage application settings
-- Loads configuration from environment variables
-- Provides global settings for all components
+- Manages settings via Pydantic
+- Loads from environment variables
 
 ### 8. CLI (`cli.py`)
-
-Command-line interface for system operations:
-- **`ingest`**: Ingests contracts from file
-- **`search`**: Performs searches from the command line
-- **`test_embedding`**: Tests the embedding functionality
+- Commands: `ingest`, `search`, `test_embedding`, `ingest_pdf`
+- Supports all document types
 
 ### 9. Application Entry Point (`main.py`)
-
-- Creates and configures the FastAPI application
-- Sets up middleware, routes, and logging
-- Provides a health check endpoint
+- Configures FastAPI app with CORS
+- Includes health check endpoint
 
 ## How It Works
 
-### Contract Ingestion Flow
-
-1. A contract is submitted via the API or CLI
-2. The pipeline processes it through ingestion, cleaning, and chunking
-3. The contract is stored in MongoDB for persistence
-4. The contract is indexed in Elasticsearch for structured search
-5. Clauses are embedded and stored in Qdrant for semantic search
+### Document Ingestion Flow
+1. Submit via API or CLI (JSON or PDF)
+2. Pipeline processes through type-specific ingestion, cleaning, and chunking
+3. Stores in MongoDB, indexes in Elasticsearch, embeds in Qdrant
 
 ### Search Flow
-
-1. A user submits a search query
-2. The query classifier determines if it's structured, semantic, or hybrid
-3. For structured queries, Elasticsearch is used
-4. For semantic queries, the query is embedded and searched in Qdrant
-5. For hybrid queries, both engines are used and results are combined
-6. Results are ranked and returned to the user
+1. User submits query
+2. Classifier determines query type and document types
+3. Routes to Elasticsearch (structured), Qdrant (semantic), or both (hybrid)
+4. Merges results across document types
+5. Returns ranked results with type-specific metadata
 
 ## Implementation Highlights
+- **Multi-Type Support**: Extensible framework for contracts, emails, deals, recaps
+- **Async Operations**: Uses asyncio for concurrent processing
+- **Smart Classification**: Leverages AI for query intent and type detection
+- **Flexible Search**: Combines structured and semantic approaches
+- **PDF Integration**: Converts PDFs to structured data
+- **Robust Testing**: Includes unit and workflow tests
 
-- **Async Programming**: Uses asyncio throughout for concurrent operations
-- **Classification Intelligence**: Uses OpenAI to understand query intent
-- **Result Fusion**: Combines results from different search systems
-- **Extensible Design**: Uses abstract base classes and dependency injection
-- **Error Handling**: Comprehensive error handling and logging
-
-This system provides a powerful search engine for contracts, intelligently leveraging both traditional structured search and modern semantic search to deliver the most relevant results based on the nature of the user's query.
+This system provides a powerful, type-aware search engine for business documents, delivering relevant results based on query nature and document context.

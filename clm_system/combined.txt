@@ -941,35 +941,42 @@ class MongoDBClient:
         except PyMongoError as e:
             logger.error(f"MongoDB get_documents error: {str(e)}")
             raise
-
     def _normalize_datetimes(self, document: Dict[str, Any]):
-        """Convert datetime fields to ISO strings for MongoDB storage"""
-        for field in ['created_at', 'updated_at']:
-            if field in document:
-                document[field] = document[field].isoformat()
-                
-        # Handle metadata dates
-        if 'metadata' in document:
-            for dt_field in ['effective_date', 'expiration_date', 'sent_date', 'meeting_date']:
-                if dt_field in document['metadata'] and document['metadata'][dt_field] is not None:
-                    document['metadata'][dt_field] = document['metadata'][dt_field].isoformat()
+        """No longer convert datetime fields to strings"""
+        pass
 
     def _denormalize_datetimes(self, document: Optional[Dict[str, Any]]):
-        """Convert ISO strings back to datetime objects"""
-        if not document:
-            return None
-            
-        for field in ['created_at', 'updated_at']:
-            if field in document:
-                document[field] = parser.isoparse(document[field])
-                
-        # Handle metadata dates
-        if 'metadata' in document:
-            for dt_field in ['effective_date', 'expiration_date', 'sent_date', 'meeting_date']:
-                if dt_field in document['metadata'] and isinstance(document['metadata'][dt_field], str):
-                    document['metadata'][dt_field] = parser.isoparse(document['metadata'][dt_field])
-                    
+        """No longer needed as dates are stored as Date objects"""
         return document
+
+    # def _normalize_datetimes(self, document: Dict[str, Any]):
+    #     """Convert datetime fields to ISO strings for MongoDB storage"""
+    #     for field in ['created_at', 'updated_at']:
+    #         if field in document:
+    #             document[field] = document[field].isoformat()
+                
+    #     # Handle metadata dates
+    #     if 'metadata' in document:
+    #         for dt_field in ['effective_date', 'expiration_date', 'sent_date', 'meeting_date']:
+    #             if dt_field in document['metadata'] and document['metadata'][dt_field] is not None:
+    #                 document['metadata'][dt_field] = document['metadata'][dt_field].isoformat()
+
+    # def _denormalize_datetimes(self, document: Optional[Dict[str, Any]]):
+    #     """Convert ISO strings back to datetime objects"""
+    #     if not document:
+    #         return None
+            
+    #     for field in ['created_at', 'updated_at']:
+    #         if field in document:
+    #             document[field] = parser.isoparse(document[field])
+                
+    #     # Handle metadata dates
+    #     if 'metadata' in document:
+    #         for dt_field in ['effective_date', 'expiration_date', 'sent_date', 'meeting_date']:
+    #             if dt_field in document['metadata'] and isinstance(document['metadata'][dt_field], str):
+    #                 document['metadata'][dt_field] = parser.isoparse(document['metadata'][dt_field])
+                    
+    #     return document
 
 === End of ./core/database/mongodb_client.py ===
 
@@ -3649,19 +3656,19 @@ async def test_email_workflow(sample_email):
     
     # --- Phase 5: Cleanup ---
     await mongo.documents_collection.delete_one({"id": "email_123"})
-    await qdrant.client.delete(
-        collection_name="document_chunks",
-        points_selector=models.FilterSelector(
-            filter=models.Filter(
-                must=[
-                    models.FieldCondition(
-                        key="document_id",
-                        match=models.MatchValue(value="email_123")
-                    )
-                ]
-            )
-        )
-    )
+    # qdrant.client.delete(
+    #     collection_name="document_chunks",
+    #     points_selector=models.FilterSelector(
+    #         filter=models.Filter(
+    #             must=[
+    #                 models.FieldCondition(
+    #                     key="document_id",
+    #                     match=models.MatchValue(value="email_123")
+    #                 )
+    #             ]
+    #         )
+    #     )
+    # )
 
 === End of ./test_email_workflow.py ===
 
