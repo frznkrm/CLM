@@ -15,12 +15,13 @@ The CLM Smart Search system is designed to ingest, process, and search various d
 
 ## File and Folder Structure
 
+```
 clm_system/
 ├── api/
-│   ├── init.py
+│   ├── __init__.py
 │   └── routes.py           # FastAPI API endpoints
 ├── core/
-│   ├── init.py
+│   ├── __init__.py
 │   ├── database/           # Database clients
 │   │   ├── elasticsearch_client.py
 │   │   ├── mongodb_client.py
@@ -32,27 +33,28 @@ clm_system/
 │   │   │   ├── contract.py
 │   │   │   ├── deal.py
 │   │   │   ├── email.py
+│   │   │   └── recap.py
 │   │   ├── cleaning/
 │   │   │   ├── base.py
 │   │   │   ├── contract.py
 │   │   │   ├── deal.py
 │   │   │   ├── email.py
-│   │   │   ├── recap.py
+│   │   │   └── recap.py
 │   │   ├── ingestion/
 │   │   │   ├── base.py
 │   │   │   ├── contract.py
 │   │   │   ├── deal.py
 │   │   │   ├── email.py
-│   │   │   ├── recap.py
+│   │   │   └── recap.py
 │   │   ├── orchestrator.py
-│   │   ├── preprocessing/
-│   │   │   └── pdf_processor.py
+│   │   └── preprocessing/
+│   │       └── pdf_processor.py
 │   ├── query_engine/       # Search functionality
 │   │   ├── helpers.py
 │   │   ├── query_classifier.py
 │   │   └── search.py
 │   └── utils/
-│       ├── init.py
+│       ├── __init__.py
 │       └── embeddings.py
 ├── schemas/
 │   └── schemas.py         # Pydantic data models
@@ -61,7 +63,7 @@ clm_system/
 ├── main.py                # FastAPI application entry point
 ├── test.py                # Unit tests
 └── test_email_workflow.py # Email workflow tests
-
+```
 
 ## Key Components
 
