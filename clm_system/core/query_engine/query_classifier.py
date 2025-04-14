@@ -4,15 +4,16 @@ from typing import Optional
 import asyncio
 from openai import AsyncOpenAI, APIError, RateLimitError
 from clm_system.config import settings
-
+from typing import Dict, List, Any, Optional
 logger = logging.getLogger(__name__)
 
 class QueryClassifier:
     def __init__(self):
         #self.client = AsyncOpenAI(api_key=settings.openai_api_key)
         self.client = AsyncOpenAI(
-            base_url="http://localhost:1234/v1",  # Default LM Studio port
-            api_key="deepseek-r1-distill-qwen-7b"  # Dummy key required by client
+            base_url="http://192.168.10.1:1234/v1",
+            api_key="deepseek-r1-distill-qwen-7b",  # Required even if not used
+            timeout=30.0  # Add timeout
         )
         self.cache = {}  # Simple cache for demo purposes
         self.cache_ttl = 3600  # 1 hour TTL
@@ -41,6 +42,7 @@ class QueryClassifier:
         
         try:
             response = await self.client.chat.completions.create(
+            
                 model="local-model",
                 messages=[{
                     "role": "system",
@@ -64,20 +66,34 @@ class QueryClassifier:
                 max_tokens=100
             )
 
+            logging.info(f"LLM response: {response}")
+            cleaned_content = response.choices[0].message.content.strip()
+            if "<think>" in cleaned_content:
+                cleaned_content = cleaned_content.split("</think>", 1)[-1].strip()
+            if cleaned_content.startswith("```json"):
+                cleaned_content = cleaned_content.split("```json", 1)[1].rsplit("```", 1)[0].strip()
+            
             try:
-                # Try to parse as JSON
                 import json
-                result = json.loads(response.choices[0].message.content)
+                llm_result = json.loads(cleaned_content)
+                if isinstance(llm_result, dict):
+                    query_type = llm_result.get("type", query_type)
+                    doc_types = llm_result.get("doc_types", doc_types)
+                    result = {"query_type": query_type, "doc_types": doc_types}
+            # try:
+            #     # Try to parse as JSON
+            #     import json
+            #     result = json.loads(response.choices[0].message.content)
                 
-                if isinstance(result, dict):
-                    if "type" in result:
-                        query_type = result["type"] 
-                    if "doc_types" in result and isinstance(result["doc_types"], list):
-                        doc_types = result["doc_types"]
+            #     if isinstance(result, dict):
+            #         if "type" in result:
+            #             query_type = result["type"] 
+            #         if "doc_types" in result and isinstance(result["doc_types"], list):
+            #             doc_types = result["doc_types"]
             except:
                 # If JSON parsing fails, use fallback
                 pass
-            
+            query_type = "structured"
             result = {
                 "query_type": query_type,
                 "doc_types": doc_types
@@ -125,6 +141,7 @@ class QueryClassifier:
     def _heuristic_classify(self, query: str) -> str:
         """Fallback classification using heuristics."""
         structured_keywords = [
+            "clauses.title:", "clauses.type:", 
             "date:", "type:", "status:", "party:", "before:", "after:",
             "contract type", "effective date", "expiration date", "status is"
         ]

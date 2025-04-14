@@ -248,3 +248,9 @@ class QdrantClient:
                 )
 
         return models.Filter(must=conditions) if conditions else None
+    async def close(self):
+        try:
+            self.client.close()
+            logger.info("Closed Qdrant client")
+        except Exception as e:
+            logger.error(f"Failed to close Qdrant client: {str(e)}")

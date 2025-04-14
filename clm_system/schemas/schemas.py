@@ -1,5 +1,5 @@
 # File: clm_system/api/schemas.py
-from pydantic import BaseModel, Field, EmailStr
+from pydantic import BaseModel, Field, EmailStr, validator
 from typing import Dict, List, Optional, Any, Union
 from datetime import datetime
 import uuid

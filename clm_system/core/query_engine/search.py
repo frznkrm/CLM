@@ -101,7 +101,7 @@ class QueryRouter:
         # Add document type to filters
         type_filters = filters.copy() if filters else {}
         type_filters["metadata.document_type"] = doc_type
-        
+        #query_type = "structured"
         if query_type == "structured":
             # Structured search using Elasticsearch
             results = await self.es_client.search(query, type_filters, top_k)
