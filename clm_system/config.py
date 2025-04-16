@@ -1,59 +1,56 @@
-# File: clm_system/config.py
-import os
 from functools import lru_cache
-from typing import Optional
-
-from pydantic import BaseSettings, Field
-from dotenv import load_dotenv
-load_dotenv()
+from pydantic_settings import BaseSettings
+from pydantic import Field
 
 class Settings(BaseSettings):
-    
-    openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
-    embedding_model: str = os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")
-    chunk_size: int = int(os.getenv("CHUNK_SIZE", "512"))
-    chunk_overlap: int = int(os.getenv("CHUNK_OVERLAP", "128"))
-    default_top_k: int = int(os.getenv("DEFAULT_TOP_K", "5"))
-    classifier_cache_ttl: int = int(os.getenv("CLASSIFIER_CACHE_TTL", "3600"))
-    
+    # API keys
+    openai_api_key: str = Field(default="", alias="OPENAI_API_KEY")
+    comet_api_key: str = Field(..., alias="COMET_API_KEY")
+    comet_workspace: str = Field(..., alias="COMET_WORKSPACE")
+    comet_project_name: str = Field(..., alias="COMET_PROJECT_NAME")
+    opik_api_key: str = Field(default="", alias="OPIK_API_KEY")
+    opik_workspace: str = Field(default="", alias="OPIK_WORKSPACE")
+    opik_project_name: str = Field(default="", alias="OPIK_PROJECT_NAME")
+
     # MongoDB settings
-    mongodb_uri: str = Field(..., env="MONGODB_URI")
-    mongodb_database: str = Field("clm_db", env="MONGODB_DATABASE")
-    
+    mongodb_uri: str = Field(..., alias="MONGODB_URI")
+    mongodb_database: str = Field(default="clm_db", alias="MONGODB_DATABASE")
+
     # Elasticsearch settings
-    elasticsearch_uri: str = Field(..., env="ELASTICSEARCH_URI")
-    
+    elasticsearch_uri: str = Field(..., alias="ELASTICSEARCH_URI")
+
     # Qdrant settings
-    qdrant_uri: str = Field(..., env="QDRANT_URI")
-    
+    qdrant_uri: str = Field(..., alias="QDRANT_URI")
+
     # API settings
-    api_host: str = Field("0.0.0.0", env="API_HOST")
-    api_port: int = Field(8000, env="API_PORT")
-    
+    api_host: str = Field(default="0.0.0.0", alias="API_HOST")
+    api_port: int = Field(default=8000, alias="API_PORT")
+
     # Embedding model
-    embedding_model: str = Field(
-        "sentence-transformers/all-MiniLM-L6-v2", env="EMBEDDING_MODEL"
-    )
-    
-    # Default chunk size for text splitting
-    chunk_size: int = Field(500, env="CHUNK_SIZE")
-    chunk_overlap: int = Field(50, env="CHUNK_OVERLAP")
-    
-    # Vector settings
-    vector_dimension: int = Field(384, env="VECTOR_DIMENSION")  # Default for MiniLM-L6
-    
+    embedding_model: str = Field(default="sentence-transformers/all-MiniLM-L6-v2", alias="EMBEDDING_MODEL")
+    vector_dimension: int = Field(default=384, alias="VECTOR_DIMENSION")  # Matches MiniLM-L6
+
+    # Chunking settings
+    chunk_size: int = Field(default=500, alias="CHUNK_SIZE")
+    chunk_overlap: int = Field(default=50, alias="CHUNK_OVERLAP")
+
     # Search settings
-    default_top_k: int = Field(5, env="DEFAULT_TOP_K")
-    
-    class Config:
-        env_file = ".env"
-        case_sensitive = False
-    
+    default_top_k: int = Field(default=5, alias="DEFAULT_TOP_K")
+
+    # Classifier cache
+    classifier_cache_ttl: int = Field(default=3600, alias="CLASSIFIER_CACHE_TTL")
+
+    # Logging
+    log_level: str = Field(default="INFO", alias="LOG_LEVEL")
+
+    model_config = {
+        "env_file": ".env",
+        "env_file_encoding": "utf-8",
+        "case_sensitive": False
+    }
 
 @lru_cache()
 def get_settings() -> Settings:
     return Settings()
 
-
 settings = get_settings()
-
