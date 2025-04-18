@@ -136,6 +136,10 @@ async def test_zenml_search_workflow(sample_contract):
     qdrant = QdrantClient()
     pipeline = PipelineService()
 
+    await es.client.indices.delete(index=es.index_name, ignore_unavailable=True)
+    await es.ensure_index()
+
+
     try:
         # --- Phase 1: Ingestion ---
         logger.info("Starting contract ingestion process")
@@ -267,10 +271,10 @@ async def test_zenml_search_workflow(sample_contract):
         # In the finally block:
         try:
             # Make MongoDB deletion synchronous since that's what's used in your code
-            mongo.documents_collection.delete_one({"id": "contract_test_002"})
+            await mongo.documents_collection.delete_one({"id": "contract_test_002"})
             
             # Keep async ES/Qdrant cleanup
-            await es.client.options(ignore_status=[404]).delete(index="documents", id="contract_test_002")
+            await es.client.options(ignore_status=[404]).delete(index=es.index_name, id="contract_test_002")
             await qdrant.client.delete(
                 collection_name="document_chunks",
                 points_selector=models.FilterSelector(
