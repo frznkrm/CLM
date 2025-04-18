@@ -1,6 +1,6 @@
 import time
 import json
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Annotated
 from zenml import pipeline, step
 from zenml.logger import get_logger
 from comet_ml import Experiment
@@ -9,6 +9,7 @@ import pymongo
 from elasticsearch import Elasticsearch
 from qdrant_client import QdrantClient as QdrantSyncClient
 from bson import ObjectId
+import uuid
 
 from clm_system.core.pipeline.base import BaseIngestor, BaseChunker
 from clm_system.core.utils.embeddings import get_embedding_model, compute_embedding
@@ -33,19 +34,23 @@ def make_json_serializable(data: Dict[str, Any]) -> Dict[str, Any]:
         del result["_id"]
     return result
 
-@step(experiment_tracker=COMET_TRACKER)
-def ingest_step(raw: Dict[str, Any], doc_type: str) -> Dict[str, Any]:
+@step(experiment_tracker=COMET_TRACKER, enable_cache=False)
+def ingest_step(raw: Dict[str, Any], doc_type: str) -> Annotated[Dict[str, Any], "output"]:
     """Ingest raw data into normalized JSON using BaseIngestor."""
     start_time = time.time()
     try:
         ingestor = BaseIngestor._registry['ingestor'][doc_type]()
         normalized = ingestor.process(raw)
+        if not isinstance(normalized, dict) or not normalized:
+            logger.error(f"Invalid output from ingestor for doc_type {doc_type}: {normalized}")
+            raise ValueError(f"BaseIngestor.process returned invalid output: {normalized}")
         ingestion_time = time.time() - start_time
 
         experiment = Experiment()
         experiment.log_metric("ingestion_time", ingestion_time)
         experiment.log_metric("normalized_json_size", len(json.dumps(normalized, default=serialize_datetime)))
         logger.info(f"Ingested document {normalized.get('id')} for type {doc_type}")
+        logger.debug(f"Normalized output: {normalized}")
         return normalized
     except KeyError as e:
         logger.error(f"Missing ingestor for document type {doc_type}")
@@ -99,10 +104,6 @@ def _iter_content_items(source, text_field: Optional[str]):
     else:
         yield {"text": str(source), "metadata": {}}
 
-import uuid
-
-
-
 @step(experiment_tracker=COMET_TRACKER)
 def store_step(normalized: Dict[str, Any], chunks: List[Dict[str, Any]]) -> Dict[str, Any]:
     """Store normalized JSON in MongoDB/Elasticsearch and chunks in Qdrant."""
@@ -115,12 +116,19 @@ def store_step(normalized: Dict[str, Any], chunks: List[Dict[str, Any]]) -> Dict
     embedding_model = get_embedding_model()
 
     try:
+        # Verify MongoDB connection
+        logger.debug("Verifying MongoDB connection")
+        mongo.admin.command("ping")
+        logger.debug(f"Connected to MongoDB: database={db.name}, collection={collection.name}")
+
         # Store in MongoDB
         start_time = time.time()
         mongo_doc = normalized.copy()
-        inserted_id = collection.insert_one(mongo_doc).inserted_id
+        logger.debug(f"Attempting to insert document with id={mongo_doc['id']} into MongoDB")
+        result = collection.insert_one(mongo_doc)
+        inserted_id = result.inserted_id
         mongo_time = time.time() - start_time
-        logger.debug(f"Inserted MongoDB document: {inserted_id}")
+        logger.debug(f"Inserted MongoDB document: id={mongo_doc['id']}, inserted_id={inserted_id}")
 
         # Store in Elasticsearch
         start_time = time.time()
@@ -156,6 +164,7 @@ def store_step(normalized: Dict[str, Any], chunks: List[Dict[str, Any]]) -> Dict
                 **chunk.get("metadata", {})
             }
             embedding = compute_embedding(chunk["text"], embedding_model)
+
             # Use chunk ID if available (e.g., clause ID), else generate UUID
             chunk_id = chunk.get("id", str(uuid.uuid4()))
             points.append({
@@ -204,7 +213,7 @@ def store_step(normalized: Dict[str, Any], chunks: List[Dict[str, Any]]) -> Dict
         mongo.close()
         es.close()
         qdrant.close()
-        
+
 @pipeline
 def document_processing_pipeline(raw: Dict[str, Any], doc_type: str):
     """ZenML pipeline for document ingestion, chunking, and storage."""

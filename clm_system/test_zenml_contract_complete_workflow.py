@@ -1,22 +1,20 @@
-import time
 import pytest
-import asyncio
 import logging
 from datetime import datetime
 from clm_system.core.pipeline.orchestrator import PipelineService
 from clm_system.core.database.mongodb_client import MongoDBClient
 from clm_system.core.database.elasticsearch_client import ElasticsearchClient
 from clm_system.core.database.qdrant_client import QdrantClient
+from clm_system.zenml_pipelines.search_inference_pipeline import search_inference_pipeline
+from qdrant_client import models
+from zenml.client import Client
 import os
 from dotenv import load_dotenv
-from comet_ml import API
-from qdrant_client import models
-from qdrant_client.http.exceptions import UnexpectedResponse
-from zenml.client import Client
 
-# Load .env for CometML and database credentials
+# Load .env for database credentials
 load_dotenv()
 
+# Configure logging
 logging.basicConfig(
     level=logging.DEBUG,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -122,14 +120,16 @@ def sample_contract():
     }
 
 @pytest.mark.asyncio
-async def test_zenml_pipeline_service(sample_contract):
-    # Clear previous pipeline runs to avoid caching
-    logger.info("Clearing previous ZenML pipeline runs")
+async def test_zenml_search_workflow(sample_contract):
+    # Clear previous pipeline runs and artifacts to avoid caching
+    logger.info("Clearing previous ZenML pipeline runs and artifacts")
     client = Client()
-    pipeline_name = "document_processing_pipeline"
+    pipeline_name = "search_inference_pipeline"
     for run in client.list_pipeline_runs(pipeline_name=pipeline_name):
         client.delete_pipeline_run(run.id)
-    logger.info("ZenML pipeline runs cleared")
+    for artifact in client.list_artifacts():
+        client.delete_artifact(artifact.id)
+    logger.info("ZenML pipeline runs and artifacts cleared")
 
     mongo = MongoDBClient()
     es = ElasticsearchClient()
@@ -137,90 +137,141 @@ async def test_zenml_pipeline_service(sample_contract):
     pipeline = PipelineService()
 
     try:
-        # --- Phase 1: Ingestion, Chunking, and Storage ---
-        logger.info("Starting ZenML pipeline")
-        pipeline_run = await pipeline.process_document(sample_contract)
-        logger.info(f"Pipeline run: {pipeline_run}")
+        # --- Phase 1: Ingestion ---
+        logger.info("Starting contract ingestion process")
+        ingestion_run = await pipeline.process_document(sample_contract)
+        logger.info(f"Contract processed: {ingestion_run}")
 
-        # Get the output of the store_step
-        store_step_output = pipeline_run.steps["store_step"].outputs["output"].load()
-        logger.info(f"Store step output: {store_step_output}")
-
-        # Verify pipeline output
-        assert store_step_output["id"] == "contract_test_002", "Incorrect contract ID"
-        assert store_step_output["status"] == "indexed", "Incorrect status"
-        assert store_step_output["chunks_processed"] >= 7, "Expected at least 7 chunks"
-        logger.info("Pipeline output verified")
-
-        # --- Additional Verifications (MongoDB, Elasticsearch, Qdrant, CometML) ---
-        # Verify MongoDB storage
+        # Verify ingestion
         logger.info("Verifying MongoDB storage")
         db_contract = await mongo.get_document("contract_test_002")
-        logger.info(f"MongoDB query result: {db_contract}")
         assert db_contract is not None, "Contract not found in MongoDB"
         assert db_contract["title"] == "Master Service and Licensing Agreement"
-        assert len(db_contract["clauses"]) == 7, "Incorrect number of clauses in MongoDB"
+        assert len(db_contract["clauses"]) == 7
         logger.info("MongoDB storage verified")
 
-        # Verify Elasticsearch indexing
         logger.info("Verifying Elasticsearch indexing")
         es_contract = await es.client.get(index="documents", id="contract_test_002")
         assert es_contract["found"], "Contract not found in Elasticsearch"
         assert es_contract["_source"]["title"] == "Master Service and Licensing Agreement"
         logger.info("Elasticsearch indexing verified")
 
-        # Verify Qdrant storage
         logger.info("Verifying Qdrant storage")
         qdrant_points = await qdrant.scroll("contract_test_002")
-        assert len(qdrant_points) >= 7, "Expected at least 7 chunks in Qdrant"
+        assert len(qdrant_points) >= 7
         logger.info(f"Qdrant storage verified with {len(qdrant_points)} points")
 
-        # Verify CometML logging
-        logger.info("Verifying CometML metrics")
-        comet_api = API(api_key=os.getenv("COMET_API_KEY"))
-        max_attempts = 3
-        attempt = 1
-        found_metrics = False
-        expected_metrics = ["ingestion_time", "chunk_count_stored", "qdrant_store_time", "storage_success"]
+        # --- Phase 2: Structured Queries ---
+        structured_queries = [
+            {
+                "query": "clauses title of Payment Schedule",
+                "description": "Search for the payment schedule clause title",
+                "expected": "Payment Schedule",
+                "field": "clause_title"
+            },
+            {
+                "query": "TechCorp Solutions party",
+                "description": "Search by provider party name",
+                "expected": "TechCorp Solutions",
+                "field": "metadata.parties.name"
+            },
+            {
+                "query": "sla type",
+                "description": "Search for clauses of type SLA",
+                "expected": "Service Level Agreement",
+                "field": "clause_title"
+            },
+            {
+                "query": "clauses title of Confidentiality Agreement",
+                "description": "Search for the confidentiality clause title",
+                "expected": "Confidentiality Agreement",
+                "field": "clause_title"
+            }
+        ]
 
-        while attempt <= max_attempts and not found_metrics:
-            logger.debug(f"Attempt {attempt}: Fetching experiments with workspace={os.getenv('COMET_WORKSPACE')} project={os.getenv('COMET_PROJECT_NAME')}")
-            try:
-                experiments = comet_api.get_experiments(
-                    workspace=os.getenv("COMET_WORKSPACE"),
-                    project_name=os.getenv("COMET_PROJECT_NAME")
-                )
-                logger.debug(f"Found {len(experiments)} experiments")
-                # Check the last 5 experiments to cover all pipeline steps
-                for exp in experiments[-5:]:
-                    metrics = exp.get_metrics()
-                    metric_names = [m["metricName"] for m in metrics]
-                    logger.debug(f"Experiment {exp.get_name()}: metrics={metric_names}")
-                    if all(metric in metric_names for metric in expected_metrics):
-                        found_metrics = True
-                        logger.info(f"CometML metrics found: {metric_names}")
-                        break
-                if not found_metrics:
-                    logger.warning(f"Attempt {attempt}: Expected metrics not found. Retrying after 5 seconds...")
-                    time.sleep(5)
-                    attempt += 1
-            except Exception as e:
-                logger.error(f"Attempt {attempt}: Failed to fetch CometML experiments: {str(e)}")
-                attempt += 1
-                time.sleep(5)
+        for test in structured_queries:
+            logger.info(f"Testing structured query: '{test['query']}' - {test['description']}")
+            pipeline_run = search_inference_pipeline(
+                query=test["query"],
+                filters={"metadata.document_type": "contract"},
+                top_k=1
+            )
+            
+            # Get the actual results from the pipeline output
+            result = pipeline_run.steps["merge_results"].outputs["output"].load()
+            
+            logger.info(f"Structured query result: {result}")
+            assert result, f"No results for query: {test['query']}"
+            
+            if test["field"].startswith("metadata.parties"):
+                party_names = [party["name"] for party in result[0]["metadata"].get("parties", [])]
+                assert test["expected"] in party_names, f"Expected party '{test['expected']}' not found for query: {test['query']}"
+            else:
+                field_value = result[0].get(test["field"])
+                assert field_value == test["expected"], f"Expected clause '{test['expected']}', got '{field_value}' for query: {test['query']}"
+            logger.info(f"Structured query test passed for: {test['query']}")
 
-        if not found_metrics:
-            logger.warning("CometML metrics verification failed after all attempts. Continuing test to avoid blocking.")
-        else:
-            logger.info("CometML metrics verified")
+        # --- Phase 3: Semantic Queries ---
+        semantic_queries = [
+            {
+                "query": "When are payments due?",
+                "description": "Question about payment due dates",
+                "expected": "5th of each month",
+                "field": "content"
+            },
+            {
+                "query": "How long is the confidentiality period?",
+                "description": "Question about confidentiality duration",
+                "expected": "7 years",
+                "field": "content"
+            },
+            {
+                "query": "What are the termination conditions?",
+                "description": "Question about termination terms",
+                "expected": "90 days written notice",
+                "field": "content"
+            },
+            {
+                "query": "What is the uptime guarantee?",
+                "description": "Question about service level agreement",
+                "expected": "99.9%",
+                "field": "content"
+            },
+            {
+                "query": "How are disputes resolved?",
+                "description": "Question about dispute resolution",
+                "expected": "arbitration in New York",
+                "field": "content"
+            }
+        ]
+
+        for test in semantic_queries:
+            logger.info(f"Testing semantic query: '{test['query']}' - {test['description']}")
+            pipeline_run = search_inference_pipeline(
+                query=test["query"],
+                filters={"metadata.document_type": "contract"},
+                top_k=1
+            )
+            
+            # Get the actual results from the pipeline output
+            result = pipeline_run.steps["merge_results"].outputs["output"].load()
+            
+            logger.info(f"Semantic query result: {result}")
+            assert result, f"No results for query: {test['query']}"
+            field_value = result[0].get(test["field"], "")
+            assert test["expected"] in field_value, f"Expected content '{test['expected']}' not found in '{field_value}' for query: {test['query']}"
+            logger.info(f"Semantic query test passed for: {test['query']}")
+
     finally:
-        # Cleanup test data
         logger.info("Cleaning up test data")
-        await mongo.documents_collection.delete_one({"id": "contract_test_002"})
-        await es.client.options(ignore_status=[404]).delete(index="documents", id="contract_test_002")
+        # In the finally block:
         try:
-            await asyncio.to_thread(
-                qdrant.client.delete,
+            # Make MongoDB deletion synchronous since that's what's used in your code
+            mongo.documents_collection.delete_one({"id": "contract_test_002"})
+            
+            # Keep async ES/Qdrant cleanup
+            await es.client.options(ignore_status=[404]).delete(index="documents", id="contract_test_002")
+            await qdrant.client.delete(
                 collection_name="document_chunks",
                 points_selector=models.FilterSelector(
                     filter=models.Filter(
@@ -233,8 +284,8 @@ async def test_zenml_pipeline_service(sample_contract):
                     )
                 )
             )
-        except UnexpectedResponse as e:
-            logger.debug(f"Qdrant cleanup skipped: {str(e)}")
-        await es.close()
-        qdrant.client.close()
+            await es.close()
+            qdrant.client.close()
+        except Exception as e:
+            logger.error(f"Cleanup failed: {e}")
         logger.info("Cleanup completed")
