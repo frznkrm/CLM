@@ -55,5 +55,5 @@ temp.py
 combiner.py
 combined.txt
 
-clm_system/core/preprocessing/contract.json
-clm_system/core/preprocessing/sample_contract.docx
+clm_system/core/pipeline/preprocessing/contract.json
+clm_system/core/pipeline/preprocessing/sample_contract.docx
