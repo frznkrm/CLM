@@ -1,0 +1,452 @@
+OIL SUPPLY AND DISTRIBUTION AGREEMENT
+TABLE OF CONTENTS
+ARTICLE 1. PREAMBLE
+ARTICLE 2. DEFINITIONS
+ARTICLE 3. PARTIES
+ARTICLE 4. PURPOSE AND SCOPE
+ARTICLE 5. TERM AND TERMINATION
+ARTICLE 6. OBLIGATIONS OF SUPPLIER (PARTY A)
+ARTICLE 7. OBLIGATIONS OF DISTRIBUTOR (PARTY B)
+ARTICLE 8. PAYMENT TERMS
+ARTICLE 9. CONFIDENTIALITY
+ARTICLE 10. INTELLECTUAL PROPERTY
+ARTICLE 11. REPRESENTATIONS AND WARRANTIES
+ARTICLE 12. INDEMNIFICATION
+ARTICLE 13. LIMITATION OF LIABILITY
+ARTICLE 14. FORCE MAJEURE
+ARTICLE 15. DISPUTE RESOLUTION
+ARTICLE 16. GOVERNING LAW AND JURISDICTION
+ARTICLE 17. AMENDMENTS
+ARTICLE 18. NOTICES
+ARTICLE 19. ASSIGNMENT
+ARTICLE 20. ENTIRE AGREEMENT
+ARTICLE 21. SEVERABILITY
+ARTICLE 22. WAIVER
+ARTICLE 23. COUNTERPARTS
+ARTICLE 24. SIGNATURES
+ARTICLE 25. SCHEDULES AND EXHIBITS
+SCHEDULE A: Product Specifications and Pricing
+SCHEDULE B: Delivery and Distribution Details
+EXHIBIT 1: Supplier’s Branding Guidelines
+EXHIBIT 2: Insurance Requirements
+
+1. Preamble
+This Oil Supply and Distribution Agreement (the "Agreement") is entered into on April 20, 2025 (the "Effective Date") by and between Horizon Energy Corp, a corporation organized and existing under the laws of Texas, United States, with its principal place of business at 1234 Energy Lane, Dallas, TX 75201 ("Supplier"), and PetroGlobal Partners, a corporation organized and existing under the laws of Malaysia, with its principal place of business at Tower B, Level 15, Menara Prestige, Kuala Lumpur 50450, Malaysia ("Distributor"). Collectively, Supplier and Distributor are referred to as the "Parties" and individually as a "Party."
+WHEREAS, Supplier is engaged in the exploration, production, and supply of crude oil and refined petroleum products;
+WHEREAS, Distributor has expertise and infrastructure for the distribution, marketing, and sale of petroleum products;
+WHEREAS, the Parties desire to establish a mutually beneficial relationship for the supply and distribution of oil products in accordance with the terms and conditions set forth herein;
+WHEREAS, the Parties intend to comply with all applicable laws, regulations, and industry standards governing the oil and gas industry;
+NOW, THEREFORE, in consideration of the mutual covenants and promises contained herein, and for other good and valuable consideration, the receipt and sufficiency of which are hereby acknowledged, the Parties agree as follows:
+
+2. Definitions
+For the purposes of this Agreement, the following terms shall have the meanings set forth below unless the context otherwise requires:
+2.1 Affiliate
+Any entity that directly or indirectly controls, is controlled by, or is under common control with a Party, where "control" means ownership of more than 50% of the voting shares or the ability to direct management or policies.
+2.2 Agreement
+This Oil Supply and Distribution Agreement, including all Schedules and Exhibits attached hereto, as may be amended from time to time in accordance with Section 17 (Amendments).
+2.3 API Standards
+The standards and specifications for petroleum products published by the American Petroleum Institute, as applicable to the Products supplied under this Agreement.
+2.4 Business Day
+Any day other than a Saturday, Sunday, or public holiday in Dallas, Texas, United States, or Kuala Lumpur, Malaysia.
+2.5 Confidential Information
+Any non-public information disclosed by one Party to the other, including but not limited to technical data, business plans, financial information, trade secrets, and customer lists, whether oral, written, or electronic, marked as confidential or reasonably considered confidential.
+2.6 Crude Oil
+Unrefined petroleum in its natural state, as specified in Schedule A, supplied by the Supplier under this Agreement.
+2.7 Delivery Point
+The location(s) specified in Schedule B where the Supplier shall deliver the Products to the Distributor, as mutually agreed by the Parties.
+2.8 Effective Date
+April 20, 2025, the date on which this Agreement becomes effective.
+2.9 Force Majeure Event
+Any event beyond the reasonable control of a Party, as further defined in Section 14 (Force Majeure).
+2.10 Products
+Crude Oil and/or Refined Products, as specified in Schedule A, to be supplied by the Supplier and distributed by the Distributor under this Agreement.
+2.11 Refined Products
+Petroleum products, including but not limited to gasoline, diesel, jet fuel, and lubricants, as specified in Schedule A, supplied by the Supplier under this Agreement.
+2.12 Specifications
+The quality, quantity, and other technical requirements for the Products, as set forth in Schedule A, in compliance with API Standards and applicable laws.
+2.13 Term
+The duration of this Agreement, as defined in Section 5 (Term and Termination).
+2.14 Territory
+The geographical area in which the Distributor is authorized to market and sell the Products, as specified in Schedule B.
+
+3. Parties
+3.1 Supplier
+Name: Horizon Energy Corp
+Legal Status: Corporation
+Jurisdiction: Texas, United States
+Principal Place of Business: 1234 Energy Lane, Dallas, TX 75201, United States
+Registration Number: TX-9876543
+Contact Person: Sarah L. Mitchell
+Title: Vice President of Operations
+Email: sarah.mitchell@horizonenergy.com
+Phone: +1 (214) 555-0281
+3.2 Distributor
+Name: PetroGlobal Partners
+Legal Status: Corporation
+Jurisdiction: Malaysia
+Principal Place of Business: Tower B, Level 15, Menara Prestige, Kuala Lumpur 50450, Malaysia
+Registration Number: MY-202109876L
+Contact Person: Anil Kumar
+Title: Managing Director
+Email: anil.kumar@petroglobal.com
+Phone: +60 3-2088 7765
+3.3 Notices
+All notices under this Agreement shall be sent to the addresses and contact persons listed above, unless otherwise updated in accordance with Section 18 (Notices).
+
+4. Purpose and Scope
+4.1 Purpose
+The purpose of this Agreement is to establish a framework for the Supplier to supply Crude Oil and Refined Products to the Distributor, and for the Distributor to market, distribute, and sell such Products within the Territory, in accordance with the terms and conditions set forth herein. The Parties aim to leverage the Supplier’s production capabilities and the Distributor’s distribution network to ensure a reliable supply chain and maximize market penetration.
+4.2 Scope of Supply
+The Supplier shall provide the Products as specified in Schedule A, which includes Crude Oil and Refined Products such as gasoline, diesel, and jet fuel, meeting the Specifications and API Standards. The Products shall be delivered to the Delivery Point(s) specified in Schedule B, in the quantities and according to the delivery schedule agreed upon by the Parties.
+4.3 Scope of Distribution
+The Distributor shall be responsible for the marketing, distribution, and sale of the Products within the Territory as defined in Schedule B. The Distributor shall use commercially reasonable efforts to promote the Products, maintain adequate storage and transportation infrastructure, and comply with all applicable laws and regulations in the Territory.
+4.4 Exclusivity
+The Distributor shall have exclusive rights to distribute the Products within the Territory, subject to meeting the performance obligations outlined in Section 7 (Obligations of Party B). The Supplier shall not appoint any other distributor or sell the Products directly in the Territory during the Term, except as otherwise agreed in writing by the Parties.
+4.5 Limitations
+This Agreement does not cover the provision of services or products beyond those specified in Schedule A, nor does it include any joint venture, partnership, or agency relationship between the Parties. The Distributor shall not have authority to bind the Supplier in any manner except as expressly provided herein. Any additional products, territories, or services shall require a written amendment to this Agreement in accordance with Section 17 (Amendments).
+4.6 Compliance
+Both Parties shall perform their obligations under this Agreement in compliance with all applicable laws, regulations, and industry standards, including but not limited to environmental, safety, and trade regulations in the jurisdictions of the Supplier, Distributor, and the Territory.
+
+5. Term and Termination
+5.1 Term
+This Agreement shall commence on the Effective Date (April 20, 2025) and continue for an initial term of five (5) years (the "Initial Term"), unless terminated earlier in accordance with this Section 5. Upon expiration of the Initial Term, this Agreement may be renewed for additional one (1) year terms (each a "Renewal Term") by mutual written agreement of the Parties, provided that such agreement is reached at least ninety (90) days prior to the expiration of the Initial Term or any Renewal Term.
+5.2 Termination for Convenience
+Either Party may terminate this Agreement without cause by providing the other Party with at least one hundred eighty (180) days’ prior written notice, such termination to take effect at the end of the Initial Term or any Renewal Term.
+5.3 Termination for Cause
+Either Party may terminate this Agreement immediately upon written notice to the other Party if:
+(a) The other Party materially breaches any provision of this Agreement and fails to cure such breach within thirty (30) days after receiving written notice specifying the breach; or
+(b) The other Party becomes insolvent, files for bankruptcy, is subject to a receiver or trustee appointment, or ceases to conduct business in the ordinary course.
+5.4 Termination for Force Majeure
+If a Force Majeure Event, as defined in Section 14, continues for more than ninety (90) consecutive days, either Party may terminate this Agreement upon written notice to the other Party, provided the Force Majeure Event remains unresolved at the time of such notice.
+5.5 Effect of Termination
+Upon termination or expiration of this Agreement:
+(a) The Distributor shall cease all marketing, distribution, and sale of the Products, except as necessary to fulfill any outstanding orders agreed upon prior to termination;
+(b) The Supplier shall have no obligation to supply additional Products, except as required to honor existing delivery commitments;
+(c) All outstanding payments due under this Agreement shall become immediately payable; and
+(d) The Parties shall return or destroy any Confidential Information in their possession, as required under Section 9 (Confidentiality).
+5.6 Survival
+The provisions of Sections 9 (Confidentiality), 10 (Intellectual Property), 11 (Representations and Warranties), 12 (Indemnification), 13 (Limitation of Liability), 15 (Dispute Resolution), 16 (Governing Law and Jurisdiction), 20 (Entire Agreement), 21 (Severability), and any other provisions that by their nature should survive, shall remain in effect after termination or expiration of this Agreement.
+
+6. Obligations of Party A (Supplier)
+6.1 Supply of Products
+The Supplier shall supply the Products, as specified in Schedule A, to the Distributor at the Delivery Point(s) specified in Schedule B, in accordance with the Specifications, quantities, and delivery schedules agreed upon by the Parties. The Supplier shall ensure that all Products meet API Standards and comply with applicable laws and regulations.
+6.2 Quality Assurance
+The Supplier shall implement and maintain quality control procedures to ensure the Products conform to the Specifications. The Supplier shall provide certificates of analysis or other documentation, as specified in Schedule A, with each delivery to verify compliance with the Specifications.
+6.3 Delivery Obligations
+The Supplier shall arrange for the transportation of the Products to the Delivery Point(s) and ensure timely delivery in accordance with the agreed delivery schedule. The Supplier shall bear all costs and risks associated with the Products until delivery at the Delivery Point, unless otherwise specified in Schedule B.
+6.4 Compliance with Laws
+The Supplier shall comply with all applicable laws, regulations, and industry standards related to the production, storage, transportation, and supply of the Products, including but not limited to environmental, health, safety, and export control regulations in the Supplier’s jurisdiction and the Territory.
+6.5 Product Availability
+The Supplier shall use commercially reasonable efforts to maintain sufficient production and inventory levels to meet the Distributor’s forecasted demand, as provided in accordance with Schedule B. The Supplier shall notify the Distributor promptly of any anticipated disruptions in supply, including those caused by Force Majeure Events.
+6.6 Technical Support
+The Supplier shall provide reasonable technical assistance to the Distributor regarding the handling, storage, and use of the Products, including providing product data sheets, safety information, and training materials as specified in Schedule A, at no additional cost to the Distributor.
+6.7 Reporting
+The Supplier shall provide the Distributor with monthly reports detailing the quantities of Products supplied, delivery dates, and any quality or compliance issues encountered, as outlined in Schedule B. Such reports shall be submitted within ten (10) Business Days after the end of each month.
+6.8 Cooperation with Distributor
+The Supplier shall cooperate with the Distributor to facilitate the marketing and distribution of the Products, including providing promotional materials, product samples, and participating in joint marketing initiatives as mutually agreed in Schedule B.
+6.9 Insurance
+The Supplier shall maintain adequate insurance coverage, including general liability and product liability insurance, to cover its obligations under this Agreement. Proof of such insurance shall be provided to the Distributor upon request, as specified in Schedule B.
+
+7. Obligations of Party B (Distributor)
+7.1 Marketing and Distribution
+The Distributor shall use commercially reasonable efforts to market, distribute, and sell the Products within the Territory, as specified in Schedule B, in accordance with the terms of this Agreement. The Distributor shall develop and execute a marketing plan, as outlined in Schedule B, to promote the Products effectively.
+7.2 Compliance with Specifications
+The Distributor shall ensure that the Products are stored, handled, and distributed in a manner that maintains their quality and compliance with the Specifications and API Standards. The Distributor shall not modify or adulterate the Products without the prior written consent of the Supplier.
+7.3 Infrastructure and Logistics
+The Distributor shall maintain adequate storage facilities, transportation logistics, and distribution networks to receive, store, and distribute the Products efficiently and safely. The Distributor shall bear all costs and risks associated with the Products after delivery at the Delivery Point, unless otherwise specified in Schedule B.
+7.4 Compliance with Laws
+The Distributor shall comply with all applicable laws, regulations, and industry standards related to the marketing, distribution, and sale of the Products in the Territory, including but not limited to environmental, health, safety, and trade regulations. The Distributor shall obtain and maintain all necessary permits and licenses required for its operations.
+7.5 Sales Targets
+The Distributor shall meet the minimum sales targets for the Products, as specified in Schedule B, during each year of the Term. Failure to meet these targets may result in the Supplier’s right to terminate the exclusivity provisions under Section 4.4, subject to a thirty (30) day cure period following written notice.
+7.6 Customer Support
+The Distributor shall provide reasonable customer support services to end-users of the Products, including handling inquiries, complaints, and warranty claims in accordance with the Supplier’s guidelines, as specified in Schedule A. The Distributor shall promptly notify the Supplier of any significant customer issues or product defects.
+7.7 Forecasting and Ordering
+The Distributor shall provide the Supplier with quarterly demand forecasts for the Products, as specified in Schedule B, at least sixty (60) days prior to the start of each quarter. The Distributor shall submit purchase orders in accordance with the procedures and lead times outlined in Schedule B.
+7.8 Reporting
+The Distributor shall provide the Supplier with monthly reports detailing sales volumes, inventory levels, market conditions, and any regulatory or compliance issues in the Territory, as outlined in Schedule B. Such reports shall be submitted within ten (10) Business Days after the end of each month.
+7.9 Branding and Intellectual Property
+The Distributor shall market and sell the Products under the Supplier’s trademarks and branding, as specified in Schedule A, and in accordance with Section 10 (Intellectual Property). The Distributor shall not use the Supplier’s intellectual property for any purpose other than the performance of its obligations under this Agreement.
+7.10 Insurance
+The Distributor shall maintain adequate insurance coverage, including general liability and product liability insurance, to cover its obligations under this Agreement. Proof of such insurance shall be provided to the Supplier upon request, as specified in Schedule B.
+
+8. Payment Terms
+8.1 Pricing
+The Distributor shall purchase the Products from the Supplier at the prices set forth in Schedule A, which may be adjusted by mutual agreement of the Parties in accordance with market conditions and subject to the amendment procedures in Section 17 (Amendments). All prices are exclusive of applicable taxes, duties, and transportation costs, unless otherwise specified in Schedule B.
+8.2 Invoicing
+The Supplier shall issue invoices to the Distributor for each delivery of Products within five (5) Business Days of delivery to the Delivery Point. Each invoice shall include the quantity, type, and price of the Products delivered, as well as any applicable taxes or additional charges, in accordance with Schedule A and Schedule B.
+8.3 Payment Schedule
+The Distributor shall pay all invoices within thirty (30) days of the invoice date, unless otherwise agreed in Schedule B. Payments shall be made in United States Dollars (USD) via electronic funds transfer to the Supplier’s designated bank account, as specified in Schedule B.
+8.4 Late Payments
+If the Distributor fails to make any payment when due, the Supplier may charge interest on the overdue amount at a rate of one and a half percent (1.5%) per month, or the maximum rate permitted by applicable law, whichever is lower, from the due date until the date of payment. The Supplier may also suspend further deliveries of Products until all outstanding payments are settled in full.
+8.5 Taxes and Duties
+The Distributor shall be responsible for all taxes, duties, and governmental charges related to the purchase, importation, distribution, and sale of the Products in the Territory, including value-added tax (VAT), customs duties, and excise taxes. The Supplier shall be responsible for taxes related to the production and export of the Products, as applicable in its jurisdiction.
+8.6 Currency and Exchange Rate
+All payments under this Agreement shall be made in USD. If the Distributor makes payments in a currency other than USD due to regulatory requirements in the Territory, the exchange rate shall be based on the mid-market rate published by Bloomberg on the date of payment, and any conversion costs shall be borne by the Distributor.
+8.7 Set-Off
+The Distributor shall not withhold, deduct, or set off any amounts owed to the Supplier against any claims or disputes, unless expressly agreed in writing by the Supplier or as required by applicable law.
+8.8 Records and Audits
+The Distributor shall maintain accurate records of all transactions related to the purchase and sale of the Products. The Supplier shall have the right, upon reasonable notice and during normal business hours, to audit such records to verify compliance with the payment terms of this Agreement, provided such audits occur no more than once per calendar year and are conducted at the Supplier’s expense, unless discrepancies exceeding five percent (5%) are found, in which case the Distributor shall bear the audit costs.
+
+9. Confidentiality
+9.1 Definition of Confidential Information
+As defined in Section 2.5, Confidential Information includes any non-public information disclosed by one Party (the "Disclosing Party") to the other Party (the "Receiving Party"), whether oral, written, electronic, or otherwise, that is marked as confidential or would reasonably be considered confidential under the circumstances, including but not limited to technical data, product specifications, pricing, business plans, customer lists, and marketing strategies.
+9.2 Obligations of the Receiving Party
+The Receiving Party shall:
+(a) Use the Confidential Information solely for the purpose of performing its obligations under this Agreement;
+(b) Maintain the confidentiality of the Confidential Information using at least the same degree of care as it uses to protect its own confidential information, but in no event less than a reasonable degree of care;
+(c) Not disclose the Confidential Information to any third party without the prior written consent of the Disclosing Party, except as permitted under Section 9.3.
+9.3 Permitted Disclosures
+The Receiving Party may disclose Confidential Information:
+(a) To its employees, officers, directors, or Affiliates who have a need to know such information for the performance of this Agreement, provided they are bound by confidentiality obligations at least as restrictive as those in this Section 9;
+(b) To its legal, financial, or other professional advisors, provided they are under professional or contractual obligations of confidentiality;
+(c) As required by applicable law, regulation, or court order, provided the Receiving Party gives the Disclosing Party prompt written notice (where legally permitted) to allow the Disclosing Party to seek a protective order or other remedy, and discloses only the minimum information required.
+9.4 Exclusions
+Confidential Information shall not include information that:
+(a) Is or becomes publicly available through no fault of the Receiving Party;
+(b) Was rightfully in the possession of the Receiving Party without restriction prior to its disclosure by the Disclosing Party;
+(c) Is independently developed by the Receiving Party without use of or reference to the Disclosing Party’s Confidential Information; or
+(d) Is rightfully obtained by the Receiving Party from a third party without restriction on disclosure.
+9.5 Return or Destruction of Confidential Information
+Upon termination or expiration of this Agreement, or at the Disclosing Party’s written request, the Receiving Party shall, at the Disclosing Party’s option, promptly return or destroy all Confidential Information (including copies) in its possession or control, except for any information required to be retained by applicable law or for archival purposes under strict confidentiality. The Receiving Party shall certify in writing the completion of such return or destruction within ten (10) Business Days of the request.
+9.6 Duration of Confidentiality Obligations
+The obligations under this Section 9 shall survive for a period of five (5) years following the termination or expiration of this Agreement, except for Confidential Information constituting trade secrets, which shall remain confidential for as long as such information qualifies as a trade secret under applicable law.
+9.7 Equitable Relief
+The Receiving Party acknowledges that unauthorized disclosure or use of Confidential Information may cause irreparable harm to the Disclosing Party. Accordingly, the Disclosing Party shall be entitled to seek equitable relief, including injunctions, to prevent or remedy any breach of this Section 9, in addition to any other remedies available at law or in equity.
+
+10. Intellectual Property
+10.1 Ownership
+The Supplier retains all right, title, and interest in and to any intellectual property rights, including but not limited to trademarks, trade names, logos, patents, copyrights, and trade secrets, associated with the Products, their Specifications, and any related documentation, promotional materials, or technical data provided by the Supplier (collectively, "Supplier IP"). Nothing in this Agreement grants the Distributor any ownership rights in the Supplier IP.
+10.2 License Grant
+The Supplier grants the Distributor a non-exclusive, non-transferable, revocable license to use the Supplier IP solely for the purpose of marketing, distributing, and selling the Products within the Territory, as specified in Schedule B, during the Term of this Agreement. This license includes the right to use the Supplier’s trademarks, trade names, and logos on promotional materials and packaging, subject to the Supplier’s branding guidelines provided in Schedule A.
+10.3 Usage Restrictions
+The Distributor shall:
+(a) Use the Supplier IP strictly in accordance with the Supplier’s branding guidelines and written instructions, as specified in Schedule A;
+(b) Not modify, alter, or create derivative works of the Supplier IP without the Supplier’s prior written consent;
+(c) Not use the Supplier IP in a manner that could harm the Supplier’s reputation or goodwill; and
+(d) Not use the Supplier IP for any purpose other than the marketing, distribution, and sale of the Products under this Agreement.
+10.4 Approval of Materials
+The Distributor shall submit all marketing materials, packaging, and other items bearing the Supplier IP to the Supplier for prior written approval, which shall not be unreasonably withheld or delayed. The Supplier shall respond to such requests within ten (10) Business Days. The Distributor shall make any requested changes to ensure compliance with the Supplier’s branding guidelines.
+10.5 Protection of Supplier IP
+The Distributor shall promptly notify the Supplier of any actual or suspected infringement, misappropriation, or unauthorized use of the Supplier IP in the Territory. The Supplier shall have the sole right, at its discretion, to take action to enforce or defend the Supplier IP. The Distributor shall cooperate with the Supplier in any such actions, including providing relevant information and documentation, at the Supplier’s expense.
+10.6 Distributor IP
+Any intellectual property rights developed or owned by the Distributor, including but not limited to marketing strategies, customer data, or distribution processes created independently of the Supplier IP, shall remain the property of the Distributor. The Supplier shall have no rights to such Distributor IP, except as mutually agreed in writing.
+10.7 Termination of License
+Upon termination or expiration of this Agreement, the Distributor shall immediately cease all use of the Supplier IP and return or destroy any materials bearing the Supplier IP, as directed by the Supplier, within ten (10) Business Days. The Distributor shall certify in writing the completion of such return or destruction.
+10.8 Indemnity for IP Infringement
+The Supplier shall indemnify the Distributor against any third-party claims alleging that the Supplier IP, when used in accordance with this Agreement, infringes any intellectual property rights, provided the Distributor promptly notifies the Supplier of such claims and cooperates in the defense. This indemnity shall not apply to claims arising from the Distributor’s unauthorized use or modification of the Supplier IP.
+
+11. Representations and Warranties
+11.1 Mutual Representations and Warranties
+Each Party represents and warrants to the other that:
+(a) It is a duly organized, validly existing corporation in good standing under the laws of its jurisdiction of incorporation, as specified in Section 3 (Parties);
+(b) It has the full power and authority to enter into and perform its obligations under this Agreement, and the execution and delivery of this Agreement have been duly authorized;
+(c) This Agreement constitutes a legal, valid, and binding obligation, enforceable against it in accordance with its terms, subject to applicable bankruptcy, insolvency, or similar laws; and
+(d) The execution, delivery, and performance of this Agreement do not violate any applicable law, regulation, or contractual obligation to which it is subject.
+11.2 Supplier’s Representations and Warranties
+The Supplier represents and warrants that:
+(a) The Products supplied under this Agreement shall conform to the Specifications set forth in Schedule A and comply with API Standards and all applicable laws and regulations at the time of delivery;
+(b) The Products shall be free from defects in material and workmanship at the time of delivery to the Delivery Point;
+(c) The Supplier has good and marketable title to the Products, free from any liens, encumbrances, or claims; and
+(d) The use of the Supplier IP by the Distributor, in accordance with the license granted under Section 10 (Intellectual Property), does not infringe any third-party intellectual property rights.
+11.3 Distributor’s Representations and Warranties
+The Distributor represents and warrants that:
+(a) It has the necessary expertise, infrastructure, and licenses to market, distribute, and sell the Products in the Territory in compliance with all applicable laws and regulations;
+(b) It shall store, handle, and distribute the Products in a manner that maintains their quality and compliance with the Specifications and API Standards; and
+(c) It shall conduct its marketing and distribution activities in a manner that does not harm the Supplier’s reputation or goodwill.
+11.4 Disclaimer of Other Warranties
+Except as expressly provided in this Section 11, the Supplier makes no other warranties, express or implied, including but not limited to warranties of merchantability or fitness for a particular purpose, with respect to the Products or any services provided under this Agreement. The Distributor acknowledges that it has not relied on any representations or warranties other than those explicitly set forth herein.
+11.5 Notice of Breach
+If either Party becomes aware of any breach of the representations or warranties in this Section 11, it shall promptly notify the other Party in writing, providing reasonable details of the breach. The breaching Party shall have thirty (30) days from receipt of such notice to cure the breach, if curable, or otherwise mitigate the impact to the satisfaction of the non-breaching Party.
+11.6 Survival
+The representations and warranties set forth in this Section 11 shall survive the delivery of the Products and the termination or expiration of this Agreement for a period of two (2) years, except for those related to title and intellectual property infringement, which shall survive indefinitely.
+
+12. Indemnification
+12.1 Supplier’s Indemnification
+The Supplier shall indemnify, defend, and hold harmless the Distributor, its Affiliates, and their respective officers, directors, employees, and agents (collectively, the "Distributor Indemnitees") from and against any and all claims, liabilities, damages, losses, costs, and expenses (including reasonable attorneys’ fees) arising out of or relating to:
+(a) Any breach of the Supplier’s representations, warranties, or obligations under this Agreement;
+(b) Any claim that the Products or the Supplier IP, when used in accordance with this Agreement, infringe any third-party intellectual property rights;
+(c) Any defect in the Products at the time of delivery to the Delivery Point, including non-compliance with the Specifications or API Standards; or
+(d) Any violation by the Supplier of applicable laws or regulations related to the production, supply, or export of the Products.
+12.2 Distributor’s Indemnification
+The Distributor shall indemnify, defend, and hold harmless the Supplier, its Affiliates, and their respective officers, directors, employees, and agents (collectively, the "Supplier Indemnitees") from and against any and all claims, liabilities, damages, losses, costs, and expenses (including reasonable attorneys’ fees) arising out of or relating to:
+(a) Any breach of the Distributor’s representations, warranties, or obligations under this Agreement;
+(b) Any improper storage, handling, or distribution of the Products by the Distributor after delivery at the Delivery Point that results in damage, injury, or non-compliance with applicable standards;
+(c) Any marketing or sales activities by the Distributor that misrepresent the Products or harm the Supplier’s reputation; or
+(d) Any violation by the Distributor of applicable laws or regulations related to the marketing, distribution, or sale of the Products in the Territory.
+12.3 Indemnification Procedures
+(a) The Party seeking indemnification (the "Indemnified Party") shall promptly notify the other Party (the "Indemnifying Party") in writing of any claim, demand, or action for which it seeks indemnification, provided that failure to provide such notice shall not relieve the Indemnifying Party of its obligations except to the extent it is materially prejudiced by such failure.
+(b) The Indemnifying Party shall assume control of the defense and settlement of the claim, provided it confirms in writing its obligation to indemnify and has the financial capability to do so.
+(c) The Indemnified Party shall cooperate fully with the Indemnifying Party in the defense of the claim and may, at its own expense, participate in the defense with counsel of its own choosing.
+(d) The Indemnifying Party shall not settle any claim without the prior written consent of the Indemnified Party, which shall not be unreasonably withheld, unless the settlement involves only the payment of monetary damages and includes a full release of the Indemnified Party.
+12.4 Exceptions
+The Supplier’s indemnification obligations under Section 12.1(b) shall not apply to claims arising from the Distributor’s unauthorized modification or misuse of the Supplier IP. The Distributor’s indemnification obligations under Section 12.2 shall not apply to claims arising from defects in the Products existing at the time of delivery to the Delivery Point.
+12.5 Survival
+The indemnification obligations set forth in this Section 12 shall survive the termination or expiration of this Agreement for a period of three (3) years, except for claims related to intellectual property infringement or product defects, which shall survive indefinitely.
+
+13. Limitation of Liability
+13.1 Exclusion of Consequential Damages
+To the maximum extent permitted by applicable law, neither Party shall be liable to the other Party or any third party for any indirect, incidental, special, consequential, or punitive damages, including but not limited to loss of profits, loss of revenue, loss of business opportunities, or loss of data, arising out of or related to this Agreement, whether in contract, tort, or otherwise, even if the Party has been advised of the possibility of such damages.
+13.2 Cap on Liability
+The aggregate liability of either Party to the other for any and all claims arising out of or related to this Agreement, whether in contract, tort, or otherwise, shall not exceed the total amount paid or payable by the Distributor to the Supplier under this Agreement during the twelve (12) months immediately preceding the event giving rise to the claim. This limitation shall not apply to:
+(a) A Party’s indemnification obligations under Section 12 (Indemnification);
+(b) Breaches of Section 9 (Confidentiality) or Section 10 (Intellectual Property); or
+(c) Damages resulting from a Party’s gross negligence, willful misconduct, or fraud.
+13.3 Product Liability
+The Supplier’s liability for any claims related to defects in the Products shall be limited to the replacement of the defective Products or a refund of the purchase price paid for such Products, at the Supplier’s discretion, provided the Distributor notifies the Supplier of the defect within thirty (30) days of delivery and complies with the Supplier’s inspection and return procedures as specified in Schedule A.
+13.4 Force Majeure
+Neither Party shall be liable for any failure or delay in performing its obligations under this Agreement to the extent such failure or delay is caused by a Force Majeure Event, as defined in Section 14 (Force Majeure), provided the affected Party complies with the notification and mitigation requirements therein.
+13.5 No Liability for Third-Party Actions
+Neither Party shall be liable for any damages or losses caused by the actions or omissions of third parties, including subcontractors or customers, except to the extent such damages or losses result from the Party’s failure to comply with its obligations under this Agreement.
+13.6 Survival
+The limitations of liability set forth in this Section 13 shall survive the termination or expiration of this Agreement and apply to the fullest extent permitted by applicable law.
+
+14. Force Majeure
+14.1 Definition
+A "Force Majeure Event" means any event or circumstance beyond the reasonable control of a Party that prevents or materially delays the performance of its obligations under this Agreement, including but not limited to acts of God, natural disasters (such as earthquakes, floods, or hurricanes), war, terrorism, riots, civil unrest, government actions or restrictions, embargoes, sanctions, strikes, labor disputes, power outages, or disruptions in transportation or supply chains, provided such event is not caused by the affected Party’s negligence or willful misconduct.
+14.2 Notification
+The Party affected by a Force Majeure Event (the "Affected Party") shall promptly notify the other Party in writing within five (5) Business Days of becoming aware of the Force Majeure Event, providing reasonable details of the event, its anticipated impact on performance, and the estimated duration of the delay.
+14.3 Mitigation
+The Affected Party shall use commercially reasonable efforts to mitigate the effects of the Force Majeure Event and resume performance of its obligations as soon as practicable. The Affected Party shall keep the other Party informed of any material developments and the steps being taken to address the Force Majeure Event.
+14.4 Suspension of Obligations
+If a Force Majeure Event prevents or materially delays the Affected Party’s performance of its obligations under this Agreement, such obligations shall be suspended for the duration of the Force Majeure Event, provided the Affected Party complies with the notification and mitigation requirements of this Section 14. Neither Party shall be liable for any damages or penalties resulting from such suspension.
+14.5 Termination for Prolonged Force Majeure
+If a Force Majeure Event continues for more than ninety (90) consecutive days and materially prevents the Affected Party from performing its obligations, either Party may terminate this Agreement by providing written notice to the other Party, as specified in Section 5.4 (Termination for Force Majeure). Such termination shall take effect immediately upon receipt of the notice, subject to the provisions of Section 5.5 (Effect of Termination).
+14.6 No Relief for Payment Obligations
+A Force Majeure Event shall not excuse or delay the Distributor’s obligation to pay any amounts due under this Agreement for Products already delivered to the Delivery Point prior to the occurrence of the Force Majeure Event, unless otherwise agreed in writing by the Supplier.
+
+15. Dispute Resolution
+15.1 Negotiation
+In the event of any dispute, claim, or controversy arising out of or relating to this Agreement, including its interpretation, performance, or breach (a "Dispute"), the Parties shall first attempt to resolve the Dispute through good faith negotiations. The Party raising the Dispute shall provide written notice to the other Party, describing the nature of the Dispute in reasonable detail. The Parties’ designated representatives, as specified in Section 3 (Parties), shall meet (in person or via teleconference) within ten (10) Business Days of such notice to discuss and attempt to resolve the Dispute.
+15.2 Mediation
+If the Dispute is not resolved through negotiation within thirty (30) days of the initial notice, the Parties shall submit the Dispute to non-binding mediation administered by a mutually agreed-upon mediation service in Malaysia. The mediation shall be conducted by a single mediator selected by the Parties or, if the Parties cannot agree within ten (10) Business Days, appointed by the mediation service. The mediation shall take place within sixty (60) days of the failure to resolve the Dispute through negotiation, and the costs of mediation shall be shared equally by the Parties, unless otherwise agreed.
+15.3 Arbitration
+If the Dispute is not resolved through mediation within ninety (90) days of the initial notice, the Dispute shall be finally resolved by binding arbitration administered by the Asian International Arbitration Centre (AIAC) in accordance with its Arbitration Rules in effect at the time of the arbitration. The arbitration shall be conducted in Malaysia by a single arbitrator appointed in accordance with the AIAC Rules. The language of the arbitration shall be English. The arbitrator’s award shall be final and binding, and judgment on the award may be entered in any court having jurisdiction.
+15.4 Exceptions
+Notwithstanding the foregoing, either Party may seek interim or equitable relief, such as an injunction or specific performance, from a court of competent jurisdiction as specified in Section 16 (Governing Law and Jurisdiction), without first pursuing negotiation or mediation, if such relief is necessary to prevent irreparable harm or to preserve the status quo pending resolution of the Dispute.
+15.5 Costs
+Each Party shall bear its own costs and attorneys’ fees incurred in connection with negotiation and mediation. In arbitration, the arbitrator may allocate costs, including reasonable attorneys’ fees, to the prevailing Party, in accordance with the AIAC Rules.
+15.6 Confidentiality
+All negotiations, mediations, and arbitrations conducted pursuant to this Section 15 shall be treated as Confidential Information under Section 9 (Confidentiality), and the Parties shall ensure that all related communications and documents remain confidential, except as required by applicable law or to enforce an arbitral award.
+15.7 Continuation of Obligations
+During the pendency of any Dispute resolution process, the Parties shall continue to perform their respective obligations under this Agreement, to the extent such performance is not directly affected by the Dispute, unless the Agreement is terminated in accordance with Section 5 (Term and Termination).
+
+16. Governing Law and Jurisdiction
+16.1 Governing Law
+This Agreement, and any disputes or claims arising out of or in connection with it or its subject matter or formation (including non-contractual disputes or claims), shall be governed by and construed in accordance with the laws of Malaysia, without regard to its conflict of laws principles.
+16.2 Jurisdiction
+Subject to Section 15 (Dispute Resolution), the Parties irrevocably agree that the courts of Malaysia shall have exclusive jurisdiction to settle any dispute or claim arising out of or in connection with this Agreement or its subject matter or formation (including non-contractual disputes or claims). Each Party hereby consents to the jurisdiction of such courts and waives any objection to the venue or convenience of such courts.
+16.3 Compliance with Local Laws
+Nothing in this Section 16 shall relieve either Party of its obligation to comply with the applicable laws and regulations of the jurisdictions in which it performs its obligations under this Agreement, including but not limited to the Supplier’s jurisdiction (Texas, United States) and the Territory, as specified in Schedule B.
+
+17. Amendments
+17.1 Written Agreement
+This Agreement, including any Schedules or Exhibits, may only be amended, modified, or supplemented by a written agreement signed by authorized representatives of both Parties. No oral statements, course of conduct, or informal communications shall constitute an amendment to this Agreement.
+17.2 Procedure
+Any Party proposing an amendment shall provide written notice to the other Party, specifying the proposed changes and the rationale for such changes. The Parties shall negotiate in good faith to reach agreement on the proposed amendment within thirty (30) Business Days of such notice, unless otherwise mutually agreed.
+17.3 Effect of Amendments
+Any amendment agreed upon in accordance with this Section 17 shall form an integral part of this Agreement and shall be binding on both Parties as of the effective date specified in the amendment. All other terms and conditions of this Agreement not expressly amended shall remain in full force and effect.
+17.4 No Waiver
+The agreement to amend any provision of this Agreement shall not constitute a waiver of any other provision, nor shall it be construed as a waiver of the requirement for written amendments in future instances.
+
+18. Notices
+18.1 Method of Delivery
+All notices, demands, or other communications required or permitted under this Agreement shall be in writing and delivered by:
+(a) Personal delivery with signed receipt;
+(b) Registered or certified mail, return receipt requested;
+(c) Internationally recognized courier service; or
+(d) Electronic mail, provided a confirmation of receipt is obtained from the recipient.
+18.2 Notice Addresses
+Notices shall be sent to the following addresses or email addresses, unless updated in accordance with Section 18.3:
+Supplier:
+Horizon Energy Corp
+1234 Energy Lane, Dallas, TX 75201, United States
+Attention: Sarah L. Mitchell, Vice President of Operations
+Email: sarah.mitchell@horizonenergy.com
+Phone: +1 (214) 555-0281
+Distributor:
+PetroGlobal Partners
+Tower B, Level 15, Menara Prestige, Kuala Lumpur 50450, Malaysia
+Attention: Anil Kumar, Managing Director
+Email: anil.kumar@petroglobal.com
+Phone: +60 3-2088 7765
+18.3 Change of Contact Information
+Either Party may change its contact information for notices by providing written notice to the other Party at least ten (10) Business Days prior to the effective date of the change. Such notice shall comply with the delivery methods specified in Section 18.1.
+18.4 Effectiveness
+Notices shall be deemed received:
+(a) Upon receipt, if delivered by personal delivery or courier, as evidenced by a signed receipt;
+(b) Three (3) Business Days after posting, if sent by registered or certified mail; or
+(c) Upon confirmation of receipt, if sent by electronic mail. If a notice is sent by email and no confirmation is received within two (2) Business Days, the sending Party shall resend the notice using another method specified in Section 18.1.
+18.5 Business Days
+If a notice is received on a day that is not a Business Day, or after 5:00 p.m. local time at the recipient’s address, it shall be deemed received on the next Business Day.
+
+19. Assignment
+19.1 General Prohibition
+Neither Party may assign, transfer, or delegate any of its rights or obligations under this Agreement, in whole or in part, to any third party without the prior written consent of the other Party, which shall not be unreasonably withheld, conditioned, or delayed.
+19.2 Permitted Assignments
+Notwithstanding Section 19.1, either Party may assign this Agreement without the other Party’s consent:
+(a) To an Affiliate, provided the assigning Party remains liable for the performance of its obligations under this Agreement; or
+(b) In connection with a merger, acquisition, or sale of all or substantially all of the assigning Party’s assets, provided the assignee agrees in writing to be bound by all terms and conditions of this Agreement.
+19.3 Notice of Assignment
+The assigning Party shall provide written notice to the other Party within ten (10) Business Days of any assignment, including the name, address, and contact details of the assignee, in accordance with Section 18 (Notices).
+19.4 Effect of Assignment
+Any permitted assignment shall be binding on and inure to the benefit of the assignee, provided the assignee complies with the terms of this Agreement. Any assignment in violation of this Section 19 shall be null and void.
+19.5 No Release
+No assignment shall relieve the assigning Party of its obligations under this Agreement unless expressly agreed in writing by the other Party.
+
+20. Entire Agreement
+20.1 Complete Agreement
+This Agreement, together with all Schedules and Exhibits attached hereto, constitutes the entire agreement between the Parties with respect to the subject matter hereof and supersedes all prior or contemporaneous agreements, understandings, negotiations, or communications, whether written or oral, relating to such subject matter.
+20.2 No Other Representations
+Each Party acknowledges that it has not relied on any representations, warranties, or promises other than those expressly set forth in this Agreement. No other terms, conditions, or obligations shall be implied, whether by statute, custom, or otherwise, unless expressly included herein.
+20.3 Incorporation of Schedules and Exhibits
+All Schedules and Exhibits referenced in this Agreement are hereby incorporated by reference and form an integral part of this Agreement. In the event of any conflict between the main body of this Agreement and any Schedule or Exhibit, the main body shall prevail unless the Schedule or Exhibit expressly states otherwise.
+20.4 No Modification Except by Amendment
+This Agreement may only be modified or supplemented by a written amendment executed by authorized representatives of both Parties in accordance with Section 17 (Amendments). No course of dealing, usage of trade, or course of performance shall be deemed to modify or supplement the terms of this Agreement.
+
+21. Severability
+21.1 Invalid Provisions
+If any provision of this Agreement is found to be invalid, illegal, or unenforceable by a court or arbitral tribunal of competent jurisdiction, such provision shall be deemed modified to the minimum extent necessary to make it valid, legal, and enforceable, while preserving the intent of the Parties as closely as possible.
+21.2 Effect on Remaining Provisions
+The invalidity, illegality, or unenforceability of any provision shall not affect the validity, legality, or enforceability of the remaining provisions of this Agreement, which shall continue in full force and effect.
+21.3 Replacement of Provisions
+If a provision is deemed invalid, illegal, or unenforceable and cannot be modified to achieve enforceability, the Parties shall negotiate in good faith to replace such provision with a valid, legal, and enforceable provision that reflects the original intent of the Parties as closely as possible, in accordance with Section 17 (Amendments).
+
+22. Waiver
+22.1 No Implied Waiver
+The failure or delay of either Party to enforce any right, remedy, or provision of this Agreement at any time shall not constitute a waiver of such right, remedy, or provision, nor shall it affect the Party’s ability to enforce such right, remedy, or provision at a later time.
+22.2 Written Waiver Required
+A waiver of any right, remedy, or provision under this Agreement shall only be effective if it is expressly set forth in a written document signed by the Party granting the waiver. Any such waiver shall be limited to the specific instance and purpose for which it is given and shall not extend to any other instance or provision.
+22.3 No Continuing Waiver
+A waiver of a breach of any provision of this Agreement shall not be construed as a waiver of any subsequent breach of the same or any other provision of this Agreement.
+
+23. Counterparts
+23.1 Multiple Counterparts
+This Agreement may be executed in any number of counterparts, each of which shall be deemed an original, but all of which together shall constitute one and the same instrument. The counterparts may be executed and delivered separately by the Parties.
+23.2 Electronic Signatures
+The Parties agree that this Agreement may be executed by electronic signatures, including but not limited to scanned signatures or signatures via electronic signature platforms, and such signatures shall have the same legal effect as original signatures, provided they comply with applicable laws.
+23.3 Delivery of Counterparts
+A counterpart may be delivered by any method specified in Section 18 (Notices), including by electronic mail as a PDF attachment, and such delivery shall be deemed effective upon receipt, as provided in Section 18.4 (Effectiveness).
+
+24. Signatures
+IN WITNESS WHEREOF, the Parties hereto have caused this Oil Supply and Distribution Agreement to be executed by their duly authorized representatives as of the Effective Date.
+For Horizon Energy Corp (Supplier):
+Name: Sarah L. Mitchell
+Title: Vice President of Operations
+Signature: ___________________________
+Date: April 20, 2025
+For PetroGlobal Partners (Distributor):
+Name: Anil Kumar
+Title: Managing Director
+Signature: ___________________________
+Date: April 20, 2025
+
+25. Schedules and Exhibits
+The following Schedules and Exhibits are attached to and form an integral part of this Agreement:
+Schedule A: Product Specifications and Pricing
+Description: Details the types, quantities, quality specifications, and pricing of the Crude Oil and Refined Products (e.g., gasoline, diesel, jet fuel) to be supplied by the Supplier, including compliance with API Standards, certificates of analysis requirements, and any technical data or branding guidelines for the Products.
+Schedule B: Delivery and Distribution Details
+Description: Specifies the Delivery Point(s), delivery schedules, Territory for distribution, minimum sales targets, demand forecasting procedures, reporting requirements, and any additional logistics or marketing obligations of the Parties.
+Exhibit 1: Supplier’s Branding Guidelines
+Description: Provides the Supplier’s guidelines for the use of its trademarks, trade names, logos, and other intellectual property in the marketing and distribution of the Products, including approved formats and usage restrictions.
+Exhibit 2: Insurance Requirements
+Description: Outlines the types and minimum coverage amounts of insurance (e.g., general liability, product liability) that both the Supplier and Distributor are required to maintain, including procedures for providing proof of insurance.
