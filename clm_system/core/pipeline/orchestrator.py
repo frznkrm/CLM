@@ -4,7 +4,9 @@ from typing import Dict, Any, List, Optional
 
 from clm_system.core.database.mongodb_client import MongoDBClient
 from clm_system.core.database.elasticsearch_client import ElasticsearchClient
-from clm_system.core.database.qdrant_client import QdrantClient
+#from clm_system.core.database.qdrant_client import QdrantClient
+from clm_system.core.database.qdrant_client import AsyncQdrantClient
+
 from clm_system.core.utils.embeddings import get_embedding_model, compute_embedding
 
 # Import base classes to ensure registration
@@ -20,7 +22,7 @@ class PipelineService:
         # Keep database clients for compatibility
         self.mongo = MongoDBClient()
         self.es = ElasticsearchClient()
-        self.qdrant = QdrantClient()
+        self.qdrant = AsyncQdrantClient()
         self.embedding_model = get_embedding_model()
 
     async def process_document(self, raw: Dict[str, Any]) -> Dict[str, Any]:

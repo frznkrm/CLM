@@ -108,7 +108,7 @@ class QueryRouter:
         elif query_type == "semantic":
             # Semantic search using Qdrant
             query_embedding = compute_embedding(query, self.embedding_model)
-            results = await self.qdrant_client.search(query_embedding, type_filters, top_k)
+            results = await self.qdrant_client.search(embedding=query_embedding, filters=type_filters, top_k=top_k)
         else:  # hybrid
             # Compute embedding here before passing to search
             query_embedding = compute_embedding(query, self.embedding_model)
@@ -116,7 +116,7 @@ class QueryRouter:
             # Run searches in parallel
             es_results, qdrant_results = await asyncio.gather(
                 self.es_client.search(query, type_filters, top_k * 2),
-                self.qdrant_client.search(query_embedding, type_filters, top_k * 2)
+                self.qdrant_client.search(embedding=query_embedding, filters=type_filters, top_k=top_k * 2)
             )
             
             # Combine results using RRF

@@ -3,7 +3,8 @@ import logging
 import uuid
 from typing import Dict, List, Any, Optional
 
-from qdrant_client import QdrantClient as QdrantClientLib, models
+#from qdrant_client import QdrantClient as QdrantClientLib, models
+from qdrant_client import AsyncQdrantClient, models
 from clm_system.config import settings
 
 logger = logging.getLogger(__name__)
@@ -12,18 +13,19 @@ class QdrantClient:
     """Client for interacting with Qdrant vector database with multi-document support"""
     
     def __init__(self):
-        self.client = QdrantClientLib(url=settings.qdrant_uri)
+        self.client = AsyncQdrantClient(url=settings.qdrant_uri)
         self.collection_name = "document_chunks"  # Generic collection name
         self.vector_size = settings.vector_dimension
     
     async def ensure_collection(self):
         """Ensures the vector collection exists with updated schema"""
         try:
-            collections = self.client.get_collections().collections
+            collections_response = await self.client.get_collections() # Await the call first
+            collections = collections_response.collections           # THEN access the attribute
             collection_names = [c.name for c in collections]
             
             if self.collection_name not in collection_names:
-                self.client.create_collection(
+                await self.client.create_collection(
                     collection_name=self.collection_name,
                     vectors_config=models.VectorParams(
                         size=self.vector_size,
@@ -41,7 +43,7 @@ class QdrantClient:
                 ]
 
                 for field, schema_type in index_config:
-                    self.client.create_payload_index(
+                    await self.client.create_payload_index(
                         collection_name=self.collection_name,
                         field_name=field,
                         field_schema=schema_type
@@ -99,7 +101,7 @@ class QdrantClient:
             # Log payload for debugging
             logger.debug(f"Storing point with payload: {payload}")
 
-            self.client.upsert(
+            await self.client.upsert(
                 collection_name=self.collection_name,
                 points=[models.PointStruct(
                     id=unique_id,
@@ -123,7 +125,7 @@ class QdrantClient:
             await self.ensure_collection()
             query_filter = self._build_filter(filters)
 
-            response = self.client.search(
+            response = await self.client.search(
                 collection_name=self.collection_name,
                 query_vector=embedding,
                 query_filter=query_filter,
@@ -146,7 +148,7 @@ class QdrantClient:
                 )]
             )
             
-            points, _ = self.client.scroll(
+            points, _ = await self.client.scroll(
                 collection_name=self.collection_name,
                 scroll_filter=scroll_filter,
                 with_payload=True,
@@ -169,7 +171,7 @@ class QdrantClient:
     async def debug_points(self, document_id: str):
         """Debug method to print detailed point information"""
         try:
-            points, _ = self.client.scroll(
+            points, _ = await self.client.scroll(
                 collection_name=self.collection_name,
                 scroll_filter=models.Filter(
                     must=[models.FieldCondition(
@@ -248,9 +250,11 @@ class QdrantClient:
                 )
 
         return models.Filter(must=conditions) if conditions else None
-    async def close(self):
+    async def aclose(self):
+        """Asynchronously close the Qdrant client connection."""
         try:
-            self.client.close()
-            logger.info("Closed Qdrant client")
+            # AsyncQdrantClient uses close() which returns an awaitable
+            await self.client.close()
+            logger.info("Closed AsyncQdrantClient")
         except Exception as e:
-            logger.error(f"Failed to close Qdrant client: {str(e)}")
+            logger.error(f"Failed to close AsyncQdrantClient: {str(e)}")

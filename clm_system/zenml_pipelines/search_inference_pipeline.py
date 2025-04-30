@@ -9,6 +9,8 @@ from clm_system.core.query_engine.search import QueryRouter # Keep QueryRouter
 from clm_system.core.query_engine.query_classifier import QueryClassifier
 from clm_system.core.database.elasticsearch_client import ElasticsearchClient
 from clm_system.core.database.qdrant_client import QdrantClient
+#from clm_system.core.database.qdrant_client import AsyncQdrantClient
+
 from clm_system.core.utils.embeddings import get_embedding_model, compute_embedding
 from clm_system.config import settings
 import time
@@ -138,7 +140,7 @@ def execute_search(
             elif query_type == "semantic":
                 query_embedding = compute_embedding(query, embedding_model)
                 # Assuming QdrantClient's search is async or wrapped appropriately
-                results = await qdrant_client.search(query_embedding, type_filters, top_k)
+                results = await qdrant_client.search(embedding=query_embedding, filters=type_filters, top_k=top_k)
             else:  # hybrid
                 query_embedding = compute_embedding(query, embedding_model)
                 es_results, qdrant_results = await asyncio.gather(

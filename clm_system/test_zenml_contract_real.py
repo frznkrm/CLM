@@ -265,7 +265,7 @@ async def test_zenml_search_workflow(sample_docx_file):
             # Fallback for synchronous close if needed (less likely for async test)
             elif hasattr(qdrant, 'close') and not asyncio.iscoroutinefunction(qdrant.close):
                  logger.warning("Closing Qdrant client synchronously.")
-                 qdrant.close()
+                 await qdrant.aclose()
             else:
                  logger.warning("Could not determine async close method for Qdrant client.")
 
