@@ -8,7 +8,8 @@ packages = [
     { include = "clm_system" }
 ]
 [tool.poetry.dependencies]
-zenml = { version = "^0.68.0", extras = ["comet"] }
+nest-asyncio = "^1.5.7"
+zenml = { version = "^0.68.0", extras = ["comet", "server"] }
 comet_ml = "^3.47.0"
 beautifulsoup4 = "^4.12.2"  # Add this line
 python-dateutil = "^2.9.0.post0"
@@ -39,6 +40,8 @@ opik = "^1.7.7"
 python-docx = "^1.1.0"    # For DOCX processing
 Pillow = "^10.0.0"        # For image handling
 pytesseract = "^0.3.10"   # For OCR on images/tables
+opencv-python = "^4.11.0.86"
+fuzzywuzzy = "^0.18.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.4.0"
@@ -47,7 +50,8 @@ isort = "^5.12.0"
 mypy = "^1.2.0"
 pytest-asyncio = "^0.21.0"
 ipdb = "^0.13.13"
-
+[tool.poe.tasks]
+run-workflow = "python run_zenml_workflow.py"
 [build-system]
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"

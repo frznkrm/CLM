@@ -1,0 +1,2 @@
+Collections in database 'clm_db':
+  - documents (documents: 3)

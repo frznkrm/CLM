@@ -1,3 +1,4 @@
+# file: core/database/elasticsearch_client.py
 import logging
 from typing import Dict, List, Optional, Any
 from elasticsearch import AsyncElasticsearch
