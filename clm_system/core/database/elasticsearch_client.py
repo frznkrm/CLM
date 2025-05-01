@@ -225,25 +225,30 @@ class ElasticsearchClient:
                 source = hit["_source"]
                 inner_hits = hit.get("inner_hits", {}).get("clauses", {}).get("hits", {}).get("hits", [])
 
+                # In elasticsearch_client.py, within the search method:
+
+                # When processing inner hits for clauses
+                # Processing inner hits for clauses
                 for clause_hit in inner_hits:
                     clause_source = clause_hit["_source"]
-                    highlights = clause_hit.get("highlight", {}).get("clauses.text", [])
-                    highlight_text = highlights[0] if highlights else clause_source.get("text", "")[:150]
+                    clause_title = clause_source.get("title", "No Title")
+                    # Extract highlighted text or fallback to clause text
+                    highlights = clause_hit.get('highlight', {}).get('clauses.text', [])
+                    highlight_text = highlights[0] if highlights else clause_source.get('text', '')[:150]
 
                     results.append({
                         "clause_id": clause_source.get("id"),
                         "contract_id": source.get("id"),
                         "contract_title": source.get("title"),
                         "clause_type": clause_source.get("type"),
-                        "clause_title": clause_source.get("title"),
-                        "content": highlight_text,
+                        "clause_title": clause_title,
+                        "content": highlight_text,  # Now correctly defined
                         "relevance_score": hit["_score"] * clause_hit["_score"],
                         "metadata": {
                             **source.get("metadata", {}),
                             **clause_source.get("metadata", {})
                         }
                     })
-
                 if not inner_hits:
                     results.append({
                         "clause_id": None,

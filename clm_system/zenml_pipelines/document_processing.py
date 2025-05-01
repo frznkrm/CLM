@@ -139,9 +139,16 @@ def _iter_content_items(source, text_field: Optional[str], source_field: str):
     if source_field == "clauses":
         for clause in source:
             content = clause.get("content", [])
-            text = clause_content_to_text(content)
-            metadata = {"clause_title": clause.get("title", "")}
-            yield {"text": text, "metadata": metadata}
+            clause_text_content = clause_content_to_text(content)
+            clause_title = clause.get("title", "") # Get the title
+
+            # --- CHANGE: Prepend title to the text being chunked ---
+            # Add a clear separator like a newline.
+            text_to_chunk = f"Clause Title: {clause_title}\n\n{clause_text_content}"
+
+            # Keep title in metadata as well for potential filtering/display
+            metadata = {"clause_title": clause_title}
+            yield {"text": text_to_chunk, "metadata": metadata} # Yield text with title prepended
     elif source_field == "header":
         header = source
         header_text = (

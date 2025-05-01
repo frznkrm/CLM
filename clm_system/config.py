@@ -31,11 +31,11 @@ class Settings(BaseSettings):
     vector_dimension: int = Field(default=384, alias="VECTOR_DIMENSION")  # Matches MiniLM-L6
 
     # Chunking settings
-    chunk_size: int = Field(default=500, alias="CHUNK_SIZE")
-    chunk_overlap: int = Field(default=50, alias="CHUNK_OVERLAP")
+    chunk_size: int = Field(default=128, alias="CHUNK_SIZE")
+    chunk_overlap: int = Field(default=25, alias="CHUNK_OVERLAP")
 
     # Search settings
-    default_top_k: int = Field(default=5, alias="DEFAULT_TOP_K")
+    default_top_k: int = Field(default=15, alias="DEFAULT_TOP_K")
 
     # Classifier cache
     classifier_cache_ttl: int = Field(default=3600, alias="CLASSIFIER_CACHE_TTL")
